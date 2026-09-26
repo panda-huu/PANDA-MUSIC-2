@@ -36,26 +36,7 @@ if ! command -v yt-dlp >/dev/null 2>&1; then
   $SUDO chmod +x /usr/local/bin/yt-dlp
 fi
 
-if [ ! -f .env ]; then
-  cp sample.env .env
-  echo
-  echo "Created .env from sample.env"
-  echo "Fill API_ID API_HASH BOT_TOKEN STRING_SESSION OWNER_ID then run:"
-  echo "  bash setup.sh"
-  exit 1
-fi
 
-need() {
-  grep -E "^$1=.+" .env >/dev/null || {
-    echo "missing $1 in .env"
-    exit 1
-  }
-}
-need API_ID
-need API_HASH
-need BOT_TOKEN
-need STRING_SESSION
-need OWNER_ID
 
 echo "==> stop old bot (same session cannot run on two IPs)"
 pkill -f './gomusic' 2>/dev/null || true
