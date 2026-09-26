@@ -73,9 +73,6 @@ if not p.exists():
     raise SystemExit(0)
 t = p.read_text(encoding="utf-8")
 n = t.replace("case 'x', '\u1d07x':", "case 'x':")
-n = n.replace("case 'x', '\u1d07x':", "case 'x':")
-# raw two-char literal used in older copies
-n = n.replace("case 'x', '\u1d07x':", "case 'x':")
 if "'\u1d07x'" in n or "case 'x'," in n:
     n = n.replace(", '\u1d07x'", "")
 if n != t:
@@ -84,6 +81,9 @@ if n != t:
 else:
     print("thumb.go ok")
 PY
+
+echo "==> modules"
+go mod tidy
 
 echo "==> build"
 go build -o gomusic ./GOMUSIC
@@ -95,5 +95,3 @@ echo "log: /root/gomusic.log"
 tail -n 30 /root/gomusic.log || true
 echo
 echo "Done. Follow logs: tail -f /root/gomusic.log"
-echo "sᴛᴀʀᴛɪɴɢ ᴍᴜsɪᴄ ʙᴏᴛ"
-./gomusic
