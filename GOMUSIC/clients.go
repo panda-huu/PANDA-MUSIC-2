@@ -199,11 +199,10 @@ func initClients() error {
 			}()
 		}
 	})
-
-})
 	return nil
 }
 
+func setBotCommands() {
 func setBotCommands() {
 	cmds := []*telegram.BotCommand{
 		{Command: "start", Description: "start the bot"},
