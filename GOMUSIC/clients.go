@@ -154,24 +154,51 @@ func initClients() error {
 		connectMu.Lock()
 		ch := connectWait[chat]
 		connectMu.Unlock()
-		if ch == nil {
+		if ch != nil {
+			switch info.State {
+			case ntgcalls.Connected:
+				select {
+				case ch <- nil:
+				default:
+				}
+			case ntgcalls.Failed, ntgcalls.Timeout, ntgcalls.Closed:
+				select {
+				case ch <- fmt.Errorf("ntgcalls state %v", info.State):
+				default:
+				}
+			}
 			return
 		}
-		switch info.State {
-		case ntgcalls.Connected:
-			select {
-			case ch <- nil:
-			default:
+		if info.State == ntgcalls.Timeout || info.State == ntgcalls.Failed || info.State == ntgcalls.Closed {
+			if isSwitching(chat) {
+				return
 			}
-		case ntgcalls.Failed, ntgcalls.Timeout, ntgcalls.Closed:
-			select {
-			case ch <- fmt.Errorf("ntgcalls state %v", info.State):
-			default:
+			song := peekCurrent(chat)
+			if song == nil {
+				leaveVCNow(chat)
+				return
 			}
+			log.Println("mid-stream disconnect, auto-reconnecting", chat, info.State)
+			go func() {
+				time.Sleep(1500 * time.Millisecond)
+				clearLiveSession(chat)
+				if Calls != nil {
+					_ = Calls.Stop(chat)
+				}
+				connectMu.Lock()
+				delete(joinParams, chat)
+				connectMu.Unlock()
+				media := buildMedia(song.FilePath, song.Video, getSeekState(chat))
+				if err := joinExistingCall(chat, media, song.Video); err != nil {
+					log.Println("auto-reconnect failed:", chat, err)
+					leaveVCNow(chat)
+				} else {
+					markLiveSession(chat)
+					log.Println("auto-reconnect success", chat)
+				}
+			}()
 		}
 	})
-	return nil
-}
 
 func setBotCommands() {
 	cmds := []*telegram.BotCommand{
