@@ -117,9 +117,10 @@ func sendQuotedPhoto(chatID int64, inner string, rows [][]InlineBtn) (*telegram.
 	}
 	caption := quotedCaption(inner)
 	photo := pickStartPhoto()
+	apiChatID := canonChatID(chatID) // ← FIX: proper Bot API format (-100XXXXXXX)
 	tryAPI := func(withStyle bool) error {
 		body := map[string]any{
-			"chat_id":    chatID,
+			"chat_id":    apiChatID,
 			"photo":      photo,
 			"caption":    caption,
 			"parse_mode": "HTML",
@@ -137,19 +138,23 @@ func sendQuotedPhoto(chatID int64, inner string, rows [][]InlineBtn) (*telegram.
 	if err := tryAPI(false); err == nil {
 		return nil, nil
 	} else {
-		if strings.Contains(strings.ToLower(err.Error()), "chat not found") {
-			log.Println("sendPhoto skipped, chat not found:", chatID)
-			return nil, err
-		}
-		log.Println("sendPhoto plain:", err)
+		log.Println("sendPhoto plain:", err) // ← FIX: early return hataya, hamesha gogram try karega
 	}
-	return Bot.SendMedia(chatID, photo, &telegram.MediaOptions{
+	msg, err := Bot.SendMedia(chatID, photo, &telegram.MediaOptions{
 		Caption:     caption,
 		ParseMode:   "HTML",
 		ReplyMarkup: gogramMarkup(rows),
 	})
+	if err == nil {
+		return msg, nil
+	}
+	log.Println("sendPhoto gogram fallback failed:", err)
+	// ← FIX: text-only fallback agar photo bhi fail kare
+	return Bot.SendMessage(chatID, caption, &telegram.SendOptions{
+		ParseMode:   "HTML",
+		ReplyMarkup: gogramMarkup(rows),
+	})
 }
-
 func showQuotedMenu(cb *telegram.CallbackQuery, inner string, rows [][]InlineBtn) {
 	if cb == nil {
 		return
