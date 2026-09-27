@@ -6,13 +6,13 @@
 
 #if defined _WIN32 || defined __CYGWIN__
 #ifdef NTG_EXPORTS
-#define NTG_C_EXPORT __declspec(dllexport)
+#define NTG_C_EXPORT __declspec(dllexport) // building the library
 #else
-#define NTG_C_EXPORT __declspec(dllimport)
+#define NTG_C_EXPORT __declspec(dllimport) // using the library
 #endif
-#else
+#else // not WIN32
 #ifdef NTG_EXPORTS
-#define NTG_C_EXPORT __attribute__((visibility("default")))
+#define NTG_C_EXPORT __attribute__((visibility("default"))) // building the library
 #else
 #define NTG_C_EXPORT
 #endif
@@ -22,18 +22,25 @@
 extern "C" {
 #endif
 #include <stdint.h>
+// ReSharper disable once CppUnusedIncludeDirective
 #include <stdbool.h>
 
+// EXCEPTIONS CODES
 typedef enum {
+    // NTgCalls
     NTG_ERROR_CONNECTION_NOT_FOUND = -101,
     NTG_ERROR_CRYPTO = -102,
     NTG_ERROR_SIGNALING = -104,
     NTG_ERROR_SIGNALING_UNSUPPORTED = -105,
     NTG_ERROR_INVALID_PARAMS = -106,
+
+    // STREAM
     NTG_ERROR_FILE = -200,
     NTG_ERROR_FFMPEG = -202,
     NTG_ERROR_SHELL = -203,
     NTG_ERROR_MEDIA_DEVICE = -204,
+
+    // WebRTC
     NTG_ERROR_RTMP_STREAMING_UNSUPPORTED = -300,
     NTG_ERROR_PARSE_TRANSPORT = -301,
     NTG_ERROR_CONNECTION = -302,
@@ -41,6 +48,8 @@ typedef enum {
     NTG_ERROR_WEBRTC = -304,
     NTG_ERROR_PARSE_SDP = -305,
     NTG_ERROR_RTC_CONNECTION_NEEDED = -306,
+
+    // Others
     NTG_ERROR_UNKNOWN = -1,
     NTG_ERROR_NULL_POINTER = -2,
     NTG_ERROR_TOO_SMALL = -3,
@@ -251,12 +260,19 @@ typedef struct {
 } ntg_segment_part_request_struct;
 
 typedef void (*ntg_stream_callback)(uintptr_t, int64_t, ntg_stream_type_enum, ntg_stream_device_enum, void*);
+
 typedef void (*ntg_upgrade_callback)(uintptr_t, int64_t, ntg_media_state_struct, void*);
+
 typedef void (*ntg_connection_callback)(uintptr_t, int64_t, ntg_network_info_struct, void*);
+
 typedef void (*ntg_signaling_callback)(uintptr_t, int64_t, uint8_t*, int, void*);
+
 typedef void (*ntg_frame_callback)(uintptr_t, int64_t, ntg_stream_mode_enum, ntg_stream_device_enum, ntg_frame_struct*, uint64_t, void*);
+
 typedef void (*ntg_remote_source_callback)(uintptr_t, int64_t, ntg_remote_source_struct, void*);
+
 typedef void (*ntg_broadcast_timestamp_callback)(uintptr_t, int64_t, void*);
+
 typedef void (*ntg_broadcast_part_callback)(uintptr_t, int64_t, ntg_segment_part_request_struct, void*);
 
 typedef enum {
@@ -283,45 +299,85 @@ typedef struct {
 typedef void (*ntg_log_message_callback)(ntg_log_message_struct);
 
 NTG_C_EXPORT void ntg_register_logger(ntg_log_message_callback callback);
+
 NTG_C_EXPORT uintptr_t ntg_init();
+
 NTG_C_EXPORT int ntg_destroy(uintptr_t ptr);
+
 NTG_C_EXPORT int ntg_create_p2p(uintptr_t ptr, int64_t userId, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_init_presentation(uintptr_t ptr, int64_t chatId, char** buffer, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_stop_presentation(uintptr_t ptr, int64_t chatId, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_add_incoming_video(uintptr_t ptr, int64_t chatId, char* endpoint, ntg_ssrc_group_struct* ssrcGroups, int size, uint32_t* buffer, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_remove_incoming_video(uintptr_t ptr, int64_t chatId, char* endpoint, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_init_exchange(uintptr_t ptr, int64_t userId, ntg_dh_config_struct* dhConfig, const uint8_t* g_a_hash, int sizeGAHash, uint8_t** buffer, int* size, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_exchange_keys(uintptr_t ptr, int64_t userId, const uint8_t* g_a_or_b, int sizeGAB, int64_t fingerprint, ntg_auth_params_struct* buffer, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_skip_exchange(uintptr_t ptr, int64_t userId, const uint8_t* encryptionKey, int size, bool isOutgoing, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_connect_p2p(uintptr_t ptr, int64_t userId, ntg_rtc_server_struct* servers, int serversSize, char** versions, int versionsSize, bool p2pAllowed, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_send_signaling_data(uintptr_t ptr, int64_t userId, uint8_t* buffer, int size, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_get_protocol(ntg_protocol_struct* buffer);
+
 NTG_C_EXPORT int ntg_create(uintptr_t ptr, int64_t chatID, char** buffer, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_connect(uintptr_t ptr, int64_t chatID, char* params, bool isPresentation, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_set_stream_sources(uintptr_t ptr, int64_t chatID, ntg_stream_mode_enum streamMode, ntg_media_description_struct desc, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_pause(uintptr_t ptr, int64_t chatID, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_resume(uintptr_t ptr, int64_t chatID, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_mute(uintptr_t ptr, int64_t chatID, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_unmute(uintptr_t ptr, int64_t chatID, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_stop(uintptr_t ptr, int64_t chatID, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_time(uintptr_t ptr, int64_t chatID, ntg_stream_mode_enum streamMode, int64_t* time, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_get_state(uintptr_t ptr, int64_t chatID, ntg_media_state_struct* mediaState, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_get_connection_mode(uintptr_t ptr, int64_t chatID, ntg_connection_mode_enum* mode, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_send_external_frame(uintptr_t ptr, int64_t chatID, ntg_stream_device_enum device, uint8_t* frame, int frameSize, ntg_frame_data_struct frameData, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_send_broadcast_timestamp(uintptr_t ptr, int64_t chatId, int64_t timestamp, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_send_broadcast_part(uintptr_t ptr, int64_t chatId, int64_t segmentId, int32_t partId, ntg_media_segment_status_enum status, bool qualityUpdate, const uint8_t* frame, int frameSize, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_get_media_devices(ntg_media_devices_struct* buffer);
+
 NTG_C_EXPORT int ntg_calls(uintptr_t ptr, ntg_call_info_struct** buffer, int* size, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_on_stream_end(uintptr_t ptr, ntg_stream_callback callback, void* userData);
+
 NTG_C_EXPORT int ntg_on_upgrade(uintptr_t ptr, ntg_upgrade_callback callback, void* userData);
+
 NTG_C_EXPORT int ntg_on_connection_change(uintptr_t ptr, ntg_connection_callback callback, void* userData);
+
 NTG_C_EXPORT int ntg_on_signaling_data(uintptr_t ptr, ntg_signaling_callback callback, void* userData);
+
 NTG_C_EXPORT int ntg_on_frames(uintptr_t ptr, ntg_frame_callback callback, void* userData);
+
 NTG_C_EXPORT int ntg_on_remote_source_change(uintptr_t ptr, ntg_remote_source_callback callback, void* userData);
+
 NTG_C_EXPORT int ntg_on_request_broadcast_timestamp(uintptr_t ptr, ntg_broadcast_timestamp_callback callback, void* userData);
+
 NTG_C_EXPORT int ntg_on_request_broadcast_part(uintptr_t ptr, ntg_broadcast_part_callback callback, void* userData);
+
 NTG_C_EXPORT int ntg_get_version(char** buffer);
+
 NTG_C_EXPORT int ntg_cpu_usage(uintptr_t ptr, double* buffer, ntg_async_struct future);
+
 NTG_C_EXPORT int ntg_enable_g_lib_loop(bool enable);
 
 #ifdef __cplusplus

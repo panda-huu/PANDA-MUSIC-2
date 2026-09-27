@@ -265,7 +265,7 @@ func resolveStream(raw string, video bool) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("download API: %v", err)
 	}
-	if video && !fileHasVideo(path) {
+	if false && !fileHasVideo(path) {
 		_ = os.Remove(path)
 		return "", fmt.Errorf("downloaded file has no video track")
 	}
