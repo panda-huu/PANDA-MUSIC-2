@@ -143,7 +143,7 @@ func splitCSV(s string) []string {
 		}
 	}
 	if len(out) == 0 {
-		return []string{"https://files.catbox.moe/jgt2vm.png"}
+		return []string{"https://files.catbox.moe/hzaxeq.jpg"}
 	}
 	return out
 }
