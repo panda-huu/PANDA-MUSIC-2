@@ -11,7 +11,7 @@ var (
 	btnHelpStart = " " + smallcaps("help & commands")
 	btnUpdates   = " " + smallcaps("updates")
 	btnSupport   = smallcaps("support")
-	btnSource    = " " + smallcaps("source code")
+	btnSource    = " " + smallcaps("devloper")
 	btnCommands  = " " + smallcaps("commands")
 	btnClose     = smallcaps("close")
 	btnBack      = " " + smallcaps("back")
