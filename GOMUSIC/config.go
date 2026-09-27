@@ -102,8 +102,8 @@ func loadConfig() error {
 	if err != nil {
 		return err
 	}
-	BotName = envOr("BOT_NAME", "Shizu Music")
-	BotLink = envOr("BOT_LINK", "https://t.me/ARU_xOPUSERBOT")
+	BotName = envOr("BOT_NAME", "ѕρσтιfу")
+	BotLink = envOr("BOT_LINK", "https://t.me/sptfyX_bot")
 	UpdatesChannel = envOr("UPDATES_CHANNEL", "https://t.me/sxypndu")
 	SupportGroup = envOr("SUPPORT_GROUP", "https://t.me/crzy_soul")
 	LoggerID = loadLoggerID()
