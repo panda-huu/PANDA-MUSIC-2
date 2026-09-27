@@ -26,8 +26,8 @@ var (
 	MaxDurationSeconds int
 	QueueLimit         int
 	Cooldown           int
-	ShrutiAPIURL       string
-	ShrutiAPIKey       string
+	AruYTAPI           string
+	AruAPIKey          string
 )
 
 func loadLoggerID() int64 {
@@ -43,15 +43,6 @@ func loadLoggerID() int64 {
 		}
 	}
 	return -1003861170542
-}
-
-func firstEnv(keys ...string) string {
-	for _, k := range keys {
-		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 func loadConfig() error {
@@ -82,12 +73,8 @@ func loadConfig() error {
 	MaxDurationSeconds, _ = strconv.Atoi(envOr("MAX_DURATION_SECONDS", "1800"))
 	QueueLimit, _ = strconv.Atoi(envOr("QUEUE_LIMIT", "20"))
 	Cooldown, _ = strconv.Atoi(envOr("COOLDOWN", "10"))
-	apiURL := firstEnv("ARU_YT_URL", "SHRUTI_API_URL")
-	if apiURL == "" {
-		apiURL = "http://127.0.0.1:8080"
-	}
-	ShrutiAPIURL = strings.TrimRight(apiURL, "/")
-	ShrutiAPIKey = firstEnv("ARU_YT_KEY", "SHRUTI_API_KEY")
+	AruYTAPI = strings.TrimRight(envOr("ARU_YT_API", "http://127.0.0.1:8080"), "/")
+	AruAPIKey = strings.TrimSpace(os.Getenv("ARU_API_KEY"))
 	return nil
 }
 
