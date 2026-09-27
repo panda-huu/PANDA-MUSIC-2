@@ -273,16 +273,16 @@ func resolveStream(raw string, video bool) (string, error) {
 }
 
 func downloadViaAPI(videoID, typ, dest string) (string, error) {
-	if ShrutiAPIURL == "" || ShrutiAPIKey == "" {
+	if AruYTAPI == "" || AruAPIKey == "" {
 		return "", fmt.Errorf("download API not configured")
 	}
 	full := "https://www.youtube.com/watch?v=" + videoID
 	client := &http.Client{Timeout: 15 * time.Minute}
-	u, _ := url.Parse(ShrutiAPIURL + "/download")
+	u, _ := url.Parse(AruYTAPI + "/download")
 	q := u.Query()
 	q.Set("url", full)
 	q.Set("type", typ)
-	q.Set("api_key", ShrutiAPIKey)
+	q.Set("api_key", AruAPIKey)
 	u.RawQuery = q.Encode()
 	resp, err := client.Get(u.String())
 	if err != nil {
