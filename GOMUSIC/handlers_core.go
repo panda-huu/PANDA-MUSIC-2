@@ -326,11 +326,35 @@ func logNewUserStart(m *telegram.NewMessage) {
 	sendLogger(body, profileMarkup(uid, uname))
 }
 
+func sendStartMenu(chatID int64, inner string, rows [][]InlineBtn) {
+	ids := []int64{chatID, canonChatID(chatID)}
+	var last error
+	for _, id := range ids {
+		if id == 0 {
+			continue
+		}
+		_, err := sendQuotedPhoto(id, inner, rows)
+		if err == nil {
+			return
+		}
+		last = err
+		log.Println("start photo fail", id, err)
+		_, err = sendHTML(Bot, id, inner, gogramMarkup(rows))
+		if err == nil {
+			return
+		}
+		last = err
+		log.Println("start text fail", id, err)
+	}
+	if last != nil {
+		log.Println("start menu failed:", last)
+	}
+}
+
 func handleStart(m *telegram.NewMessage) error {
 	if blocked(m) {
 		return nil
 	}
-	_, _ = m.Delete()
 	uid := userIDOf(m)
 	name := userNameOf(m)
 	chatID := m.ChatID()
@@ -341,16 +365,18 @@ func handleStart(m *telegram.NewMessage) error {
 	if m.IsPrivate() {
 		go logNewUserStart(m)
 		if arg == "pm_help" {
-			_, _ = sendQuotedPhoto(chatID, helpInner(uid, name), GetHelpMarkup())
+			sendStartMenu(chatID, helpInner(uid, name), GetHelpMarkup())
 		} else {
-			_, _ = sendQuotedPhoto(chatID, startInner(uid, name), GetStartMarkup())
+			sendStartMenu(chatID, startInner(uid, name), GetStartMarkup())
 		}
 		addBroadcastChat(chatID, "private")
+		_, _ = m.Delete()
 		return nil
 	}
 	go refreshGroupMeta(chatID)
-	_, _ = sendQuotedPhoto(chatID, startGroupHTML(), GetGroupStartMarkup())
+	sendStartMenu(chatID, startGroupHTML(), GetGroupStartMarkup())
 	addBroadcastChat(chatID, "group")
+	_, _ = m.Delete()
 	return nil
 }
 
@@ -358,11 +384,12 @@ func handleHelp(m *telegram.NewMessage) error {
 	if blocked(m) {
 		return nil
 	}
-	_, _ = m.Delete()
 	if !m.IsPrivate() {
-		_, _ = sendQuotedPhoto(m.ChatID(), helpPrivateOnlyHTML(), GetGroupStartMarkup())
+		sendStartMenu(m.ChatID(), helpPrivateOnlyHTML(), GetGroupStartMarkup())
+		_, _ = m.Delete()
 		return nil
 	}
-	_, _ = sendQuotedPhoto(m.ChatID(), helpInner(userIDOf(m), userNameOf(m)), GetHelpMarkup())
+	sendStartMenu(m.ChatID(), helpInner(userIDOf(m), userNameOf(m)), GetHelpMarkup())
+	_, _ = m.Delete()
 	return nil
 }
