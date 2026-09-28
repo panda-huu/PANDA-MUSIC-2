@@ -23,24 +23,24 @@ func ffmpegPreFlags(src string) string {
 }
 
 func videoSize(path string) (int, int) {
+	maxW, maxH := 640, 360
 	if isHTTP(path) {
-		return 854, 480
+		return maxW, maxH
 	}
 	out, err := exec.Command("ffprobe", "-v", "error", "-select_streams", "v:0",
 		"-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", path).Output()
 	if err != nil {
-		return 854, 480
+		return maxW, maxH
 	}
 	parts := strings.Split(strings.TrimSpace(string(out)), "x")
 	if len(parts) != 2 {
-		return 854, 480
+		return maxW, maxH
 	}
 	w, _ := strconv.Atoi(parts[0])
 	h, _ := strconv.Atoi(parts[1])
 	if w <= 0 || h <= 0 {
-		return 854, 480
+		return maxW, maxH
 	}
-	maxW, maxH := 854, 480
 	ratio := float64(w) / float64(h)
 	nw := w
 	if nw > maxW {
@@ -101,9 +101,9 @@ func buildMediaAV(audioSrc, videoSrc string, video bool, seekSec int) ntgcalls.M
 		MediaSource: ntgcalls.MediaSourceShell,
 		Width:       int16(w),
 		Height:      int16(h),
-		Fps:         24,
+		Fps:         15,
 		Input: fmt.Sprintf(
-			"ffmpeg %s%s-i %s -an -f rawvideo -r 24 -pix_fmt yuv420p -vf scale=%d:%d -v quiet pipe:1",
+			"ffmpeg %s%s-i %s -an -f rawvideo -r 15 -pix_fmt yuv420p -vf scale=%d:%d -v quiet pipe:1",
 			ffmpegPreFlags(videoSrc), seek, vq, w, h,
 		),
 	}
