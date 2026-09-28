@@ -242,32 +242,43 @@ func resolveStream(raw string, video bool) (string, error) {
 	}
 	vid := extractVideoID(raw)
 	_ = os.MkdirAll(downloadDir, 0o755)
-	typ, ext := "audio", ".m4a"
+	typ, dest := "audio", filepath.Join(downloadDir, vid+".audio.m4a")
 	if video {
-		typ, ext = "video", ".mp4"
+		typ, dest = "video", filepath.Join(downloadDir, vid+".video.mp4")
 	}
-	fp := filepath.Join(downloadDir, vid+ext)
-	if st, err := os.Stat(fp); err == nil && st.Size() > 1024 {
-		if !video || fileHasVideo(fp) {
-			return fp, nil
+	if st, err := os.Stat(dest); err == nil && st.Size() > 1024 {
+		if !video || fileHasVideo(dest) {
+			return dest, nil
 		}
-		_ = os.Remove(fp)
+		_ = os.Remove(dest)
 	}
-	for _, old := range []string{".mp3", ".webm", ".mp4"} {
-		p := filepath.Join(downloadDir, vid+old)
-		if st, err := os.Stat(p); err == nil && st.Size() > 1024 {
-			if !video || fileHasVideo(p) {
+	if video {
+		for _, p := range []string{
+			filepath.Join(downloadDir, vid+".video.mp4"),
+			filepath.Join(downloadDir, vid+".mp4"),
+		} {
+			if st, err := os.Stat(p); err == nil && st.Size() > 1024 && fileHasVideo(p) {
+				return p, nil
+			}
+			if st, err := os.Stat(p); err == nil && !fileHasVideo(p) {
+				_ = os.Remove(p)
+			}
+		}
+	} else {
+		for _, ext := range []string{".audio.m4a", ".audio.mp3", ".m4a", ".mp3"} {
+			p := filepath.Join(downloadDir, vid+ext)
+			if st, err := os.Stat(p); err == nil && st.Size() > 1024 {
 				return p, nil
 			}
 		}
 	}
-	path, err := downloadViaAPI(vid, typ, fp)
+	path, err := downloadViaAPI(vid, typ, dest)
 	if err != nil {
 		return "", fmt.Errorf("download API: %v", err)
 	}
-	if false && !fileHasVideo(path) {
+	if video && !fileHasVideo(path) {
 		_ = os.Remove(path)
-		return "", fmt.Errorf("downloaded file has no video track")
+		return "", fmt.Errorf("API gave audio file, not video stream")
 	}
 	return path, nil
 }
@@ -297,6 +308,11 @@ func downloadViaAPI(videoID, typ, dest string) (string, error) {
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 400))
 		return "", fmt.Errorf("API HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	ct := strings.ToLower(resp.Header.Get("Content-Type"))
+	if typ == "video" && strings.HasPrefix(ct, "audio/") {
+		io.Copy(io.Discard, resp.Body)
+		return "", fmt.Errorf("API gave audio file, not video stream")
 	}
 	f, err := os.Create(dest)
 	if err != nil {
