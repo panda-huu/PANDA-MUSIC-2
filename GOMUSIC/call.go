@@ -204,7 +204,6 @@ func ensureVC(chatID int64) error {
 	return nil
 }
 
-// fetchLiveCall always asks Telegram. Never trust activeCalls cache.
 func fetchLiveCall(chatID int64) (telegram.InputGroupCall, error) {
 	peer, err := Assistant.ResolvePeer(chatID)
 	if err != nil {
@@ -310,6 +309,16 @@ func ntgPlay(chatID int64, media ntgcalls.MediaDescription, video bool) error {
 	return joinExistingCall(chatID, media, video || media.Camera != nil)
 }
 
+func resetLocalCall(chatID int64) {
+	if Calls != nil {
+		_ = Calls.Stop(chatID)
+	}
+	connectMu.Lock()
+	delete(joinParams, chatID)
+	connectMu.Unlock()
+	clearLiveSession(chatID)
+}
+
 func joinExistingCall(chatID int64, media ntgcalls.MediaDescription, video bool) error {
 	if Calls == nil {
 		return errors.New("ntgcalls not ready")
@@ -318,48 +327,57 @@ func joinExistingCall(chatID int64, media ntgcalls.MediaDescription, video bool)
 		return Calls.SetStreamSources(chatID, ntgcalls.CaptureStream, media)
 	}
 
-	var local string
-	if hasLocalCall(chatID) {
-		connectMu.Lock()
-		local = joinParams[chatID]
-		connectMu.Unlock()
-	}
-	if local == "" {
+	var last error
+	for attempt := 1; attempt <= 5; attempt++ {
+		var local string
 		if hasLocalCall(chatID) {
-			_ = Calls.Stop(chatID)
+			connectMu.Lock()
+			local = joinParams[chatID]
+			connectMu.Unlock()
 		}
-		created, err := Calls.CreateCall(chatID)
-		if err != nil {
-			low := strings.ToLower(err.Error())
-			if strings.Contains(low, "already") && hasLocalCall(chatID) {
-				connectMu.Lock()
-				local = joinParams[chatID]
-				connectMu.Unlock()
-				if local == "" {
-					return Calls.SetStreamSources(chatID, ntgcalls.CaptureStream, media)
+		if local == "" {
+			if hasLocalCall(chatID) {
+				_ = Calls.Stop(chatID)
+			}
+			created, err := Calls.CreateCall(chatID)
+			if err != nil {
+				low := strings.ToLower(err.Error())
+				if strings.Contains(low, "already") && hasLocalCall(chatID) {
+					connectMu.Lock()
+					local = joinParams[chatID]
+					connectMu.Unlock()
+					if local == "" {
+						return Calls.SetStreamSources(chatID, ntgcalls.CaptureStream, media)
+					}
+				} else {
+					last = err
+					time.Sleep(time.Duration(attempt) * 400 * time.Millisecond)
+					continue
 				}
 			} else {
-				return err
+				local = created
 			}
-		} else {
-			local = created
+			connectMu.Lock()
+			joinParams[chatID] = local
+			connectMu.Unlock()
 		}
-		connectMu.Lock()
-		joinParams[chatID] = local
-		connectMu.Unlock()
-	}
 
-	if err := Calls.SetStreamSources(chatID, ntgcalls.CaptureStream, media); err != nil {
-		return err
-	}
+		joinMedia := media
+		if video && media.Camera != nil && media.Microphone != nil {
+			joinMedia = ntgcalls.MediaDescription{Microphone: media.Microphone}
+		}
+		if err := Calls.SetStreamSources(chatID, ntgcalls.CaptureStream, joinMedia); err != nil {
+			last = err
+			resetLocalCall(chatID)
+			time.Sleep(time.Duration(attempt) * 400 * time.Millisecond)
+			continue
+		}
 
-	me, err := Assistant.GetMe()
-	if err != nil {
-		return err
-	}
+		me, err := Assistant.GetMe()
+		if err != nil {
+			return err
+		}
 
-	var last error
-	for attempt := 1; attempt <= 3; attempt++ {
 		inputCall, err := fetchLiveCall(chatID)
 		if err != nil {
 			if e := ensureVC(chatID); e != nil {
@@ -387,16 +405,16 @@ func joinExistingCall(chatID int64, media ntgcalls.MediaDescription, video bool)
 			if alreadyJoinedError(err) {
 				activeCalls[chatID] = inputCall
 				callIsVideo[chatID] = video
+				if video && media.Camera != nil {
+					_ = Calls.SetStreamSources(chatID, ntgcalls.CaptureStream, media)
+				}
 				return nil
 			}
-			if invalidCallErr(err) {
-				log.Println("join stale call, refetch", chatID, err)
+			if invalidCallErr(err) || shouldRetryJoin(err) {
+				log.Println("join retry", attempt, chatID, err)
 				clearCallCache(chatID)
-				time.Sleep(800 * time.Millisecond)
-				continue
-			}
-			if shouldRetryJoin(err) && attempt < 3 {
-				time.Sleep(time.Duration(attempt+1) * time.Second)
+				resetLocalCall(chatID)
+				time.Sleep(time.Duration(attempt) * 800 * time.Millisecond)
 				continue
 			}
 			return err
@@ -412,8 +430,16 @@ func joinExistingCall(chatID int64, media ntgcalls.MediaDescription, video bool)
 		}
 		if err := Calls.Connect(chatID, remote, false); err != nil {
 			last = err
-			time.Sleep(800 * time.Millisecond)
+			log.Println("ntg connect timeout/retry", attempt, chatID, err)
+			resetLocalCall(chatID)
+			time.Sleep(time.Duration(attempt) * time.Second)
 			continue
+		}
+		if video && media.Camera != nil {
+			time.Sleep(400 * time.Millisecond)
+			if err := Calls.SetStreamSources(chatID, ntgcalls.CaptureStream, media); err != nil {
+				log.Println("video upgrade after connect:", err)
+			}
 		}
 		activeCalls[chatID] = inputCall
 		callIsVideo[chatID] = video
