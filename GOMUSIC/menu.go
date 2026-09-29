@@ -78,19 +78,27 @@ func apiMarkup(rows [][]InlineBtn, withStyle bool) map[string]any {
 }
 
 func botAPICall(method string, body map[string]any) error {
+	_, err := botAPICallID(method, body)
+	return err
+}
+
+func botAPICallID(method string, body map[string]any) (int, error) {
 	raw, err := json.Marshal(body)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	resp, err := menuHTTP.Post("https://api.telegram.org/bot"+BotToken+"/"+method, "application/json", bytes.NewReader(raw))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer resp.Body.Close()
 	out, _ := io.ReadAll(resp.Body)
 	var parsed struct {
 		OK          bool   `json:"ok"`
 		Description string `json:"description"`
+		Result      struct {
+			MessageID int `json:"message_id"`
+		} `json:"result"`
 	}
 	_ = json.Unmarshal(out, &parsed)
 	if !parsed.OK {
@@ -98,9 +106,9 @@ func botAPICall(method string, body map[string]any) error {
 		if desc == "" {
 			desc = string(out)
 		}
-		return fmt.Errorf("%s", desc)
+		return 0, fmt.Errorf("%s", desc)
 	}
-	return nil
+	return parsed.Result.MessageID, nil
 }
 
 func quotedCaption(inner string) string {
@@ -111,6 +119,29 @@ func quotedCaption(inner string) string {
 	return "<blockquote>" + inner + "</blockquote>"
 }
 
+func editStartCaption(chatID int64, msgID int, inner string, rows [][]InlineBtn) {
+	if chatID == 0 || msgID == 0 {
+		return
+	}
+	caption := quotedCaption(inner)
+	try := func(withStyle bool) error {
+		body := map[string]any{
+			"chat_id":    chatID,
+			"message_id": msgID,
+			"caption":    caption,
+			"parse_mode": "HTML",
+		}
+		if kb := apiMarkup(rows, withStyle); kb != nil {
+			body["reply_markup"] = kb
+		}
+		return botAPICall("editMessageCaption", body)
+	}
+	if err := try(true); err == nil || (err != nil && strings.Contains(strings.ToLower(err.Error()), "not modified")) {
+		return
+	}
+	_ = try(false)
+}
+
 func sendQuotedPhoto(chatID int64, inner string, rows [][]InlineBtn) (*telegram.NewMessage, error) {
 	if chatID == 0 {
 		return nil, fmt.Errorf("chat id missing")
@@ -118,7 +149,7 @@ func sendQuotedPhoto(chatID int64, inner string, rows [][]InlineBtn) (*telegram.
 	caption := quotedCaption(inner)
 	photo := pickStartPhoto()
 	apiChatID := canonChatID(chatID)
-	tryAPI := func(withStyle bool) error {
+	tryAPI := func(withStyle bool) (int, error) {
 		body := map[string]any{
 			"chat_id":    apiChatID,
 			"photo":      photo,
@@ -128,14 +159,16 @@ func sendQuotedPhoto(chatID int64, inner string, rows [][]InlineBtn) (*telegram.
 		if kb := apiMarkup(rows, withStyle); kb != nil {
 			body["reply_markup"] = kb
 		}
-		return botAPICall("sendPhoto", body)
+		return botAPICallID("sendPhoto", body)
 	}
-	if err := tryAPI(true); err == nil {
+	if id, err := tryAPI(true); err == nil {
+		editStartCaption(apiChatID, id, inner, rows)
 		return nil, nil
 	} else {
 		log.Println("sendPhoto styled:", err)
 	}
-	if err := tryAPI(false); err == nil {
+	if id, err := tryAPI(false); err == nil {
+		editStartCaption(apiChatID, id, inner, rows)
 		return nil, nil
 	} else {
 		log.Println("sendPhoto plain:", err)
@@ -146,6 +179,9 @@ func sendQuotedPhoto(chatID int64, inner string, rows [][]InlineBtn) (*telegram.
 		ReplyMarkup: gogramMarkup(rows),
 	})
 	if err == nil {
+		if msg != nil {
+			editStartCaption(canonChatID(chatID), msg.ID, inner, rows)
+		}
 		return msg, nil
 	}
 	log.Println("sendPhoto gogram fallback failed:", err)
