@@ -28,13 +28,19 @@ func (c *callAPI) SeekBy(chatID int64, ms int64) error {
 		}
 	}
 	if path == "" {
-		return nil
+		return fmt.Errorf("nothing playing")
 	}
 	video := false
 	if s := peekCurrent(chatID); s != nil {
 		video = s.Video
 	}
-	return c.SetStreamSources(chatID, ntgcalls.CaptureStream, buildMedia(path, video, getSeekState(chatID)))
+	next := nextSeekSec(chatID, int(ms/1000))
+	setSeekState(chatID, next)
+	err := c.SetStreamSources(chatID, ntgcalls.CaptureStream, buildMedia(path, video, next))
+	if err == nil {
+		bumpStream(chatID)
+	}
+	return err
 }
 
 var (
