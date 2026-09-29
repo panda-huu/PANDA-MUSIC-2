@@ -10,21 +10,15 @@ func editQuotedCaption(cb *telegram.CallbackQuery, inner string, rows [][]Inline
 	if cb == nil {
 		return false
 	}
-	chatID := cb.ChatID
-	msg, _ := cb.GetMessage()
-	if chatID == 0 && msg != nil {
-		chatID = msg.ChatID()
-	}
-	msgID := cb.MessageID
-	if msgID == 0 && msg != nil {
-		msgID = msg.ID
-	}
-	return fastEditCaption(chatID, int(msgID), inner, rows)
+	err := editMenu(cb, quotedCaption(inner), gogramMarkup(rows))
+	return err == nil
 }
 
 func openHelpPage(cb *telegram.CallbackQuery, key string) {
 	if key == "" || key == "main" {
-		showQuotedMenu(cb, helpMainHTML(), GetHelpHomeMarkup())
+		if !editQuotedCaption(cb, helpMainHTML(), GetHelpHomeMarkup()) {
+			showQuotedMenu(cb, helpMainHTML(), GetHelpHomeMarkup())
+		}
 		return
 	}
 	body := helpPage(key)
