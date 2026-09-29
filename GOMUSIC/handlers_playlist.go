@@ -15,10 +15,13 @@ type plItem struct {
 	URL   string
 	Dur   string
 	Thumb string
+	Audio bool
+	Video bool
 }
 
 type plSession struct {
 	ChatID      int64
+	EditID      int64
 	MsgID       int
 	Waiting     bool
 	Deleting    bool
@@ -26,9 +29,10 @@ type plSession struct {
 }
 
 var (
-	userPL = map[int64][]plItem{}
-	plSess = map[int64]*plSession{}
-	plMu   sync.Mutex
+	userPL     = map[int64][]plItem{}
+	plSess     = map[int64]*plSession{}
+	plMu       sync.Mutex
+	plEditChat sync.Map
 )
 
 func samePlaylistChat(a, b int64) bool {
@@ -60,13 +64,14 @@ func playlistSelectFormat() string {
 	return "<blockquote><b>" + smallcaps("select format") + "</b></blockquote>"
 }
 
-func playlistDeleteProgress() string {
-	return "<blockquote><b>" + smallcaps("delete in progress") + "</b></blockquote>"
-}
-
 func playlistMainCaption(uid int64) string {
 	plMu.Lock()
-	n := len(userPL[uid])
+	n := 0
+	for _, it := range userPL[uid] {
+		if it.Audio || it.Video {
+			n++
+		}
+	}
 	plMu.Unlock()
 	if n == 0 {
 		return playlistPrompt()
@@ -85,10 +90,16 @@ func playlistMarkup(uid int64) [][]InlineBtn {
 		if label == "" {
 			label = smallcaps("song")
 		}
-		rows = append(rows, []InlineBtn{
-			styleBtn(smallcaps("audio")+" · "+label, fmt.Sprintf("pl_a:%d", i), colors[i%3]),
-			styleBtn(smallcaps("video")+" · "+label, fmt.Sprintf("pl_v:%d", i), colors[(i+1)%3]),
-		})
+		var row []InlineBtn
+		if it.Audio {
+			row = append(row, styleBtn(smallcaps("audio")+" · "+label, fmt.Sprintf("pl_a:%d", i), colors[i%3]))
+		}
+		if it.Video {
+			row = append(row, styleBtn(smallcaps("video")+" · "+label, fmt.Sprintf("pl_v:%d", i), colors[(i+1)%3]))
+		}
+		if len(row) > 0 {
+			rows = append(rows, row)
+		}
 	}
 	rows = append(rows, []InlineBtn{
 		styleBtn(smallcaps("delete"), "pl_del", ColourRed),
@@ -104,35 +115,45 @@ func playlistDeleteFormatMarkup() [][]InlineBtn {
 	}
 }
 
+func editIDs(chatID int64, msgID int) []int64 {
+	seen := map[int64]bool{}
+	var out []int64
+	add := func(id int64) {
+		if id == 0 || seen[id] {
+			return
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	if v, ok := plEditChat.Load(msgID); ok {
+		if id, _ := v.(int64); id != 0 {
+			add(id)
+		}
+	}
+	add(canonChatID(chatID))
+	add(chatID)
+	return out
+}
+
 func editPlaylistPanel(chatID int64, msgID int, inner string, rows [][]InlineBtn) {
 	if chatID == 0 || msgID == 0 {
 		return
 	}
 	caption := quotedCaption(inner)
-	for _, id := range chatIDForms(chatID) {
-		try := func(withStyle bool, method string) error {
-			body := map[string]any{
-				"chat_id":    id,
-				"message_id": msgID,
-				"parse_mode": "HTML",
-			}
-			if method == "editMessageCaption" {
-				body["caption"] = caption
-			} else {
-				body["text"] = caption
-			}
-			if kb := apiMarkup(rows, withStyle); kb != nil {
-				body["reply_markup"] = kb
-			}
-			return botAPICall(method, body)
+	kb := apiMarkup(rows, true)
+	for _, id := range editIDs(chatID, msgID) {
+		body := map[string]any{
+			"chat_id":    id,
+			"message_id": msgID,
+			"caption":    caption,
+			"parse_mode": "HTML",
 		}
-		if err := try(true, "editMessageCaption"); err == nil || (err != nil && strings.Contains(strings.ToLower(err.Error()), "not modified")) {
-			return
+		if kb != nil {
+			body["reply_markup"] = kb
 		}
-		if err := try(false, "editMessageCaption"); err == nil || (err != nil && strings.Contains(strings.ToLower(err.Error()), "not modified")) {
-			return
-		}
-		if err := try(true, "editMessageText"); err == nil || (err != nil && strings.Contains(strings.ToLower(err.Error()), "not modified")) {
+		err := botAPICall("editMessageCaption", body)
+		if err == nil || (err != nil && strings.Contains(strings.ToLower(err.Error()), "not modified")) {
+			plEditChat.Store(msgID, id)
 			return
 		}
 	}
@@ -142,8 +163,11 @@ func deletePlaylistPanel(chatID int64, msgID int) {
 	if chatID == 0 || msgID == 0 {
 		return
 	}
-	for _, id := range chatIDForms(chatID) {
-		_ = botAPICall("deleteMessage", map[string]any{"chat_id": id, "message_id": msgID})
+	for _, id := range editIDs(chatID, msgID) {
+		if botAPICall("deleteMessage", map[string]any{"chat_id": id, "message_id": msgID}) == nil {
+			plEditChat.Delete(msgID)
+			return
+		}
 	}
 }
 
@@ -185,8 +209,10 @@ func handlePlaylist(m *telegram.NewMessage) error {
 	if id := msgBotChatID(msg); id != 0 {
 		sid = id
 	}
+	sid = canonChatID(sid)
+	plEditChat.Store(mid, sid)
 	plMu.Lock()
-	plSess[uid] = &plSession{ChatID: canonChatID(sid), MsgID: mid, Waiting: true}
+	plSess[uid] = &plSession{ChatID: sid, EditID: sid, MsgID: mid, Waiting: true}
 	plMu.Unlock()
 	return nil
 }
@@ -222,7 +248,9 @@ func handlePlaylistListen(m *telegram.NewMessage) error {
 		return nil
 	}
 	_, _ = m.Delete()
-	editPlaylistPanel(sess.ChatID, sess.MsgID, playlistSearchingCaption(), playlistMarkup(uid))
+	go func() {
+		editPlaylistPanel(sess.ChatID, sess.MsgID, playlistSearchingCaption(), playlistMarkup(uid))
+	}()
 	urlStr, title, durISO, thumb, _, err := searchSmart(text)
 	if err != nil || urlStr == "" {
 		editPlaylistPanel(sess.ChatID, sess.MsgID,
@@ -242,7 +270,7 @@ func handlePlaylistListen(m *telegram.NewMessage) error {
 			playlistMarkup(uid))
 		return nil
 	}
-	userPL[uid] = append(items, plItem{Title: title, URL: urlStr, Dur: isoToHuman(durISO), Thumb: thumb})
+	userPL[uid] = append(items, plItem{Title: title, URL: urlStr, Dur: isoToHuman(durISO), Thumb: thumb, Audio: true, Video: true})
 	plMu.Unlock()
 	editPlaylistPanel(sess.ChatID, sess.MsgID, playlistAddedCaption(), playlistMarkup(uid))
 	return nil
@@ -276,7 +304,7 @@ func playlistIsPrivate(cb *telegram.CallbackQuery) bool {
 	return false
 }
 
-func removePlaylistSong(uid int64, name string) bool {
+func removePlaylistFormat(uid int64, name string, video bool) bool {
 	name = strings.ToLower(strings.TrimSpace(name))
 	if name == "" {
 		return false
@@ -286,10 +314,21 @@ func removePlaylistSong(uid int64, name string) bool {
 	items := userPL[uid]
 	for i, it := range items {
 		t := strings.ToLower(it.Title)
-		if strings.Contains(t, name) || strings.Contains(name, t) {
-			userPL[uid] = append(items[:i], items[i+1:]...)
-			return true
+		if !(strings.Contains(t, name) || strings.Contains(name, t)) {
+			continue
 		}
+		if video {
+			it.Video = false
+		} else {
+			it.Audio = false
+		}
+		if !it.Audio && !it.Video {
+			userPL[uid] = append(items[:i], items[i+1:]...)
+		} else {
+			items[i] = it
+			userPL[uid] = items
+		}
+		return true
 	}
 	return false
 }
@@ -358,6 +397,7 @@ func handlePlaylistCallback(cb *telegram.CallbackQuery, data string) bool {
 		editPlaylistPanel(chatID, msgID, playlistMainCaption(uid), playlistMarkup(uid))
 		return true
 	case data == "pl_delfmt:a" || data == "pl_delfmt:v":
+		video := data == "pl_delfmt:v"
 		plMu.Lock()
 		s := plSess[uid]
 		name := ""
@@ -368,8 +408,7 @@ func handlePlaylistCallback(cb *telegram.CallbackQuery, data string) bool {
 		}
 		plMu.Unlock()
 		_, _ = cb.Answer("")
-		editPlaylistPanel(chatID, msgID, playlistDeleteProgress(), nil)
-		ok := removePlaylistSong(uid, name)
+		ok := removePlaylistFormat(uid, name, video)
 		plMu.Lock()
 		if s := plSess[uid]; s != nil {
 			s.Deleting = false
@@ -402,6 +441,10 @@ func handlePlaylistCallback(cb *telegram.CallbackQuery, data string) bool {
 			return true
 		}
 		it := items[idx]
+		if video && !it.Video || !video && !it.Audio {
+			_, _ = cb.Answer(smallcaps("already removed"), alert)
+			return true
+		}
 		name := sanitizeDisplayName(cb.Sender.FirstName)
 		song := Song{
 			URL:         it.URL,
