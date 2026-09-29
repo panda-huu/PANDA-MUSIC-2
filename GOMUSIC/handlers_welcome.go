@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -48,27 +47,13 @@ func fillWelcome(tpl string, uid int64, name, uname, chat string, count int) str
 		"{username}": richEsc(uname),
 		"{id}":       fmt.Sprintf("%d", uid),
 		"{chat}":     richEsc(chat),
-		"{count}":    strconv.Itoa(count),
+		"{count}":    fmt.Sprintf("%d", count),
 	}
 	out := tpl
 	for k, v := range repl {
 		out = strings.ReplaceAll(out, k, v)
 	}
 	return out
-}
-
-func welcomeCount(chatID int64) int {
-	if Bot == nil {
-		return 0
-	}
-	n, err := Bot.GetChatMembersCount(chatID)
-	if err != nil {
-		n, err = Bot.GetChatMembersCount(canonChatID(chatID))
-	}
-	if err != nil {
-		return 0
-	}
-	return int(n)
 }
 
 func sendWelcome(chatID int64, uid int64, name, uname string) {
@@ -80,7 +65,7 @@ func sendWelcome(chatID int64, uid int64, name, uname string) {
 		return
 	}
 	chat := chatTitleOf(chatID)
-	body := fillWelcome(cfg.Text, uid, name, uname, chat, welcomeCount(chatID))
+	body := fillWelcome(cfg.Text, uid, name, uname, chat, 0)
 	if cfg.Photo != "" {
 		body = richImg(cfg.Photo) + body
 	}
@@ -155,7 +140,9 @@ func handleResetWelcome(m *telegram.NewMessage) error {
 	if !isAuthorized(m) && !isOwner(userIDOf(m)) {
 		return nil
 	}
-	chatID := canonChatID(m.ChatID())	saveWelcome(chatID, welcomeCfg{On: welcomeOf(chatID).On, Text: defaultWelcomeText()})
+	chatID := canonChatID(m.ChatID())
+	on := welcomeOf(chatID).On
+	saveWelcome(chatID, welcomeCfg{On: on, Text: defaultWelcomeText()})
 	_, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("welcome reset to default")), nil)
 	_, _ = m.Delete()
 	return nil
