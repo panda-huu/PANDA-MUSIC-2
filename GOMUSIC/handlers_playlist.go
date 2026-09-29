@@ -31,6 +31,13 @@ var (
 	plMu   sync.Mutex
 )
 
+func samePlaylistChat(a, b int64) bool {
+	if a == 0 || b == 0 {
+		return false
+	}
+	return a == b || canonChatID(a) == canonChatID(b)
+}
+
 func playlistPrompt() string {
 	return "<blockquote><b>" + smallcaps("wanna to set your custom play list") + "</b></blockquote>\n" +
 		"<blockquote expandable>" + smallcaps("send the song names your play list will be get set") + "</blockquote>"
@@ -102,28 +109,48 @@ func editPlaylistPanel(chatID int64, msgID int, inner string, rows [][]InlineBtn
 		return
 	}
 	caption := quotedCaption(inner)
-	try := func(withStyle bool) error {
-		body := map[string]any{
-			"chat_id":    chatID,
-			"message_id": msgID,
-			"caption":    caption,
-			"parse_mode": "HTML",
+	for _, id := range chatIDForms(chatID) {
+		try := func(withStyle bool, method string) error {
+			body := map[string]any{
+				"chat_id":    id,
+				"message_id": msgID,
+				"parse_mode": "HTML",
+			}
+			if method == "editMessageCaption" {
+				body["caption"] = caption
+			} else {
+				body["text"] = caption
+			}
+			if kb := apiMarkup(rows, withStyle); kb != nil {
+				body["reply_markup"] = kb
+			}
+			return botAPICall(method, body)
 		}
-		if kb := apiMarkup(rows, withStyle); kb != nil {
-			body["reply_markup"] = kb
+		if err := try(true, "editMessageCaption"); err == nil || (err != nil && strings.Contains(strings.ToLower(err.Error()), "not modified")) {
+			return
 		}
-		err := botAPICall("editMessageCaption", body)
-		if err != nil {
-			delete(body, "caption")
-			body["text"] = caption
-			err = botAPICall("editMessageText", body)
+		if err := try(false, "editMessageCaption"); err == nil || (err != nil && strings.Contains(strings.ToLower(err.Error()), "not modified")) {
+			return
 		}
-		return err
+		if err := try(true, "editMessageText"); err == nil || (err != nil && strings.Contains(strings.ToLower(err.Error()), "not modified")) {
+			return
+		}
 	}
-	if err := try(true); err == nil || (err != nil && strings.Contains(strings.ToLower(err.Error()), "not modified")) {
+}
+
+func deletePlaylistPanel(chatID int64, msgID int) {
+	if chatID == 0 || msgID == 0 {
 		return
 	}
-	_ = try(false)
+	for _, id := range chatIDForms(chatID) {
+		_ = botAPICall("deleteMessage", map[string]any{"chat_id": id, "message_id": msgID})
+	}
+}
+
+func stopPlaybackEverywhere(chatID int64) {
+	for _, id := range chatIDForms(chatID) {
+		leaveVCNow(id)
+	}
 }
 
 func handlePlaylist(m *telegram.NewMessage) error {
@@ -135,6 +162,10 @@ func handlePlaylist(m *telegram.NewMessage) error {
 	}
 	uid := userIDOf(m)
 	chatID := m.ChatID()
+	if id := m.ChannelID(); id != 0 {
+		chatID = id
+	}
+	chatID = canonChatID(chatID)
 	_, _ = m.Delete()
 	photo := pickStartPhoto()
 	content := playlistPrompt()
@@ -143,11 +174,19 @@ func handlePlaylist(m *telegram.NewMessage) error {
 	}
 	msg, err := sendHTML(Bot, chatID, content, gogramMarkup(playlistMarkup(uid)))
 	if err != nil || msg == nil {
+		msg, err = sendHTML(Bot, m.ChatID(), content, gogramMarkup(playlistMarkup(uid)))
+	}
+	if err != nil || msg == nil {
 		_, _ = sendQuotedPhoto(chatID, playlistPrompt(), playlistMarkup(uid))
 		return nil
 	}
+	mid := int(msg.ID)
+	sid := msg.ChatID()
+	if id := msgBotChatID(msg); id != 0 {
+		sid = id
+	}
 	plMu.Lock()
-	plSess[uid] = &plSession{ChatID: chatID, MsgID: int(msg.ID), Waiting: true}
+	plSess[uid] = &plSession{ChatID: canonChatID(sid), MsgID: mid, Waiting: true}
 	plMu.Unlock()
 	return nil
 }
@@ -161,10 +200,14 @@ func handlePlaylistListen(m *telegram.NewMessage) error {
 		return nil
 	}
 	uid := userIDOf(m)
+	inChat := m.ChatID()
+	if id := m.ChannelID(); id != 0 {
+		inChat = id
+	}
 	plMu.Lock()
 	sess := plSess[uid]
 	plMu.Unlock()
-	if sess == nil || sess.ChatID != m.ChatID() {
+	if sess == nil || !samePlaylistChat(sess.ChatID, inChat) {
 		return nil
 	}
 	if sess.Deleting && sess.PendingName == "" {
@@ -219,7 +262,7 @@ func playlistChatID(cb *telegram.CallbackQuery) int64 {
 			chatID = id
 		}
 	}
-	return chatID
+	return canonChatID(chatID)
 }
 
 func playlistIsPrivate(cb *telegram.CallbackQuery) bool {
@@ -227,7 +270,7 @@ func playlistIsPrivate(cb *telegram.CallbackQuery) bool {
 	if msg != nil && msg.IsPrivate() {
 		return true
 	}
-	if cb.Sender != nil && cb.ChatID == cb.Sender.ID {
+	if cb.Sender != nil && (cb.ChatID == cb.Sender.ID || canonChatID(cb.ChatID) == cb.Sender.ID) {
 		return true
 	}
 	return false
@@ -260,24 +303,37 @@ func handlePlaylistCallback(cb *telegram.CallbackQuery, data string) bool {
 	switch {
 	case data == "pl_done":
 		plMu.Lock()
-		if s := plSess[uid]; s != nil {
+		s := plSess[uid]
+		chatID, msgID := int64(0), 0
+		if s != nil {
+			chatID, msgID = s.ChatID, s.MsgID
 			s.Waiting = false
 			s.Deleting = false
 			s.PendingName = ""
 		}
 		plMu.Unlock()
 		_, _ = cb.Answer(smallcaps("closed"))
+		deletePlaylistPanel(chatID, msgID)
+		if msg, _ := cb.GetMessage(); msg != nil {
+			_, _ = msg.Delete()
+		}
 		return true
 	case data == "pl_del":
 		plMu.Lock()
 		s := plSess[uid]
 		if s == nil {
-			s = &plSession{}
+			s = &plSession{ChatID: playlistChatID(cb)}
 			plSess[uid] = s
 		}
 		s.Waiting = false
 		s.Deleting = true
 		s.PendingName = ""
+		if s.ChatID == 0 {
+			s.ChatID = playlistChatID(cb)
+		}
+		if s.MsgID == 0 {
+			s.MsgID = int(cb.MessageID)
+		}
 		chatID, msgID := s.ChatID, s.MsgID
 		plMu.Unlock()
 		_, _ = cb.Answer("")
