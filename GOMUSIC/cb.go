@@ -19,13 +19,18 @@ var (
 func handleCallback(m *telegram.NewMessage) error { return nil }
 
 func callbackChatID(cb *telegram.CallbackQuery, msg *telegram.NewMessage) int64 {
+	var id int64
 	if msg != nil {
-		if id := msg.ChatID(); id != 0 {
-			return id
+		id = msgBotChatID(msg)
+		if id == 0 {
+			id = msg.ChatID()
 		}
 	}
-	if cb != nil && cb.ChatID != 0 {
-		return cb.ChatID
+	if id == 0 && cb != nil {
+		id = cb.ChatID
+	}
+	if id != 0 {
+		return canonChatID(id)
 	}
 	return 0
 }
@@ -128,7 +133,7 @@ func handleCallbackQuery(cb *telegram.CallbackQuery) error {
 			_, _ = msg.Delete()
 		}
 	case data == "stop":
-		leaveVCNow(chatID)
+		stopPlaybackEverywhere(chatID)
 		_, _ = cb.Answer("stopped")
 		if msg != nil {
 			_, _ = msg.Delete()
