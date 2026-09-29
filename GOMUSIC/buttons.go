@@ -64,7 +64,7 @@ func ownerURL() string {
 func GetStartMarkup() [][]InlineBtn {
 	return [][]InlineBtn{
 		{styleURLBtn(btnAddMe, BotLink+"?startgroup=true", ColourRed)},
-		{styleBtn(btnHelpStart, "help_cb", ColourGreen)},
+		{styleBtn(btnHelpStart, "help_cb", ColourGreen), styleBtn(btnAbout, "about_menu", ColourBlue)},
 		{styleURLBtn(btnUpdates, UpdatesChannel, ColourBlue), styleURLBtn(btnSupport, SupportGroup, ColourGreen)},
 		{styleURLBtn(btnSource, ownerURL(), ColourRed)},
 	}
