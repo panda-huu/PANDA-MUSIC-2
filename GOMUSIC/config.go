@@ -15,6 +15,7 @@ var (
 	BotToken           string
 	StringSession      string
 	OwnerID            int64
+	OwnerUsername      string
 	BotName            string
 	BotLink            string
 	UpdatesChannel     string
@@ -59,8 +60,6 @@ func loadAruAPI() {
 	url := firstEnv("ARU_YT_API", "ARU_YT_URL", "SHRUTI_API_URL")
 	key := firstEnv("ARU_API_KEY", "ARU_YT_KEY", "SHRUTI_API_KEY")
 
-	// nano/phone: both vars stuck on one line
-	// ARU_YT_API=https://x ARU_API_KEY=PANDA-KEY
 	if i := strings.Index(url, " ARU_API_KEY="); i >= 0 {
 		if key == "" {
 			key = strings.TrimSpace(url[i+len(" ARU_API_KEY="):])
@@ -102,6 +101,7 @@ func loadConfig() error {
 	if err != nil {
 		return err
 	}
+	OwnerUsername = strings.TrimPrefix(envOr("OWNER_USERNAME", "sxyrdhu"), "@")
 	BotName = envOr("BOT_NAME", "ѕρσтιfу")
 	BotLink = envOr("BOT_LINK", "https://t.me/sptfyX_bot")
 	UpdatesChannel = envOr("UPDATES_CHANNEL", "https://t.me/sxypndu")
