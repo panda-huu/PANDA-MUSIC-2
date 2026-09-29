@@ -151,7 +151,11 @@ func handleCallbackQuery(cb *telegram.CallbackQuery) error {
 			_, _ = cb.Answer("seek failed", alert)
 			return nil
 		}
-		_, _ = cb.Answer("seeked")
+		if data == "seek_back" {
+			_, _ = cb.Answer("-15s")
+		} else {
+			_, _ = cb.Answer("+15s")
+		}
 	case data == "autoplay_toggle":
 		on := toggleAutoplay(chatID)
 		if on {
@@ -172,10 +176,14 @@ func handleCallbackQuery(cb *telegram.CallbackQuery) error {
 		_, _ = cb.Answer("")
 	case data == "about_menu":
 		_, _ = cb.Answer("")
-		showQuotedMenu(cb, aboutInner(), GetAboutMarkup())
+		if !editQuotedCaption(cb, aboutInner(), GetAboutMarkup()) {
+			showQuotedMenu(cb, aboutInner(), GetAboutMarkup())
+		}
 	case data == "start" || data == "go_back":
 		_, _ = cb.Answer("")
-		showQuotedMenu(cb, startInner(cb.Sender.ID, sanitizeDisplayName(cb.Sender.FirstName)), GetStartMarkup())
+		if !editQuotedCaption(cb, startInner(cb.Sender.ID, sanitizeDisplayName(cb.Sender.FirstName)), GetStartMarkup()) {
+			showQuotedMenu(cb, startInner(cb.Sender.ID, sanitizeDisplayName(cb.Sender.FirstName)), GetStartMarkup())
+		}
 	case data == "help_cb" || data == "show_help" || data == "help:main" || data == "help_main":
 		_, _ = cb.Answer("")
 		openHelpPage(cb, "main")
