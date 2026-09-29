@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	menuHTTP   = &http.Client{Timeout: 8 * time.Second}
+	menuHTTP   = &http.Client{Timeout: 5 * time.Second}
 	menuEditID sync.Map
 )
 
@@ -212,17 +212,14 @@ func showQuotedMenu(cb *telegram.CallbackQuery, inner string, rows [][]InlineBtn
 	if cb == nil {
 		return
 	}
-	chatID := cb.ChatID
-	msg, _ := cb.GetMessage()
-	if chatID == 0 && msg != nil {
-		chatID = msg.ChatID()
-	}
-	msgID := cb.MessageID
-	if msgID == 0 && msg != nil {
-		msgID = msg.ID
-	}
-	if fastEditCaption(chatID, int(msgID), inner, rows) {
+	if editQuotedCaption(cb, inner, rows) {
 		return
+	}
+	chatID := cb.ChatID
+	if chatID == 0 {
+		if msg, _ := cb.GetMessage(); msg != nil {
+			chatID = msg.ChatID()
+		}
 	}
 	_, _ = sendQuotedPhoto(chatID, inner, rows)
 }
