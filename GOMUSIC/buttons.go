@@ -55,6 +55,9 @@ func DataBtn(text, cb string) InlineBtn { return dataBtn(text, cb) }
 func UrlBtn(text, url string) InlineBtn { return urlBtn(text, url) }
 
 func ownerURL() string {
+	if u := strings.TrimSpace(OwnerUsername); u != "" {
+		return "https://t.me/" + strings.TrimPrefix(u, "@")
+	}
 	if OwnerID != 0 {
 		return fmt.Sprintf("tg://user?id=%d", OwnerID)
 	}
@@ -63,9 +66,8 @@ func ownerURL() string {
 
 func GetStartMarkup() [][]InlineBtn {
 	return [][]InlineBtn{
-		{dataBtn("ABOUT", "about_menu")},
 		{styleURLBtn(btnAddMe, BotLink+"?startgroup=true", ColourRed)},
-		{styleBtn(btnHelpStart, "help_cb", ColourGreen)},
+		{styleBtn(btnAbout, "about_menu", ColourBlue), styleBtn(btnHelpStart, "help_cb", ColourGreen)},
 		{styleURLBtn(btnUpdates, UpdatesChannel, ColourBlue), styleURLBtn(btnSupport, SupportGroup, ColourGreen)},
 		{styleURLBtn(btnSource, ownerURL(), ColourRed)},
 	}
@@ -97,8 +99,8 @@ func GetBackMarkup() [][]InlineBtn {
 
 func GetGroupStartMarkup() [][]InlineBtn {
 	return [][]InlineBtn{
-		{dataBtn("ABOUT", "about_menu")},
 		{styleURLBtn(btnCommands, BotLink+"?start=pm_help", ColourGreen)},
+		{styleBtn(btnAbout, "about_menu", ColourBlue)},
 	}
 }
 
