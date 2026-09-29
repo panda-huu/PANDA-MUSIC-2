@@ -260,7 +260,7 @@ func resolveStream(raw string, video bool) (string, error) {
 			if st, err := os.Stat(p); err == nil && st.Size() > 1024 && fileHasVideo(p) {
 				return p, nil
 			}
-			if st, err := os.Stat(p); err == nil && !fileHasVideo(p) {
+			if _, err := os.Stat(p); err == nil && !fileHasVideo(p) {
 				_ = os.Remove(p)
 			}
 		}
