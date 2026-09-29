@@ -7,15 +7,15 @@ import (
 )
 
 var (
-	btnAddMe     = " " + smallcaps("add me to your group")
-	btnHelpStart = " " + smallcaps("help & commands")
-	btnAbout     = " " + smallcaps("about")
-	btnUpdates   = " " + smallcaps("updates")
+	btnAddMe     = smallcaps("add me to your group")
+	btnHelpStart = smallcaps("help cmd")
+	btnAbout     = smallcaps("about")
+	btnUpdates   = smallcaps("update")
 	btnSupport   = smallcaps("support")
-	btnSource    = " " + smallcaps("devloper")
-	btnCommands  = " " + smallcaps("commands")
+	btnSource    = smallcaps("devloper")
+	btnCommands  = smallcaps("commands")
 	btnClose     = smallcaps("close")
-	btnBack      = " " + smallcaps("back")
+	btnBack      = smallcaps("back")
 	btnAdmin     = smallcaps("admin")
 	btnAuth      = smallcaps("auth")
 	btnBcast     = smallcaps("b-cast")
@@ -80,7 +80,7 @@ func streamNowPlayingHTML(song Song) string {
 	if strings.TrimSpace(link) == "" {
 		link = "#"
 	}
-	return "<blockquote><b>Ὂe " + smallcaps("playback activated") + " | " + smallcaps("enjoy the music") + " |</b></blockquote>\n" +
+	return "<blockquote><b>἞ " + smallcaps("playback activated") + " | " + smallcaps("enjoy the music") + " |</b></blockquote>\n" +
 		"<blockquote expandable>▫ <b>" + smallcaps("melody") + " :</b> <a href=\"" + html.EscapeString(link) + "\">" + richEsc(shortTitle(song.Title, 48)) + "</a>\n" +
 		"▫ <b>" + smallcaps("length") + " :</b> " + richEsc(song.Duration) + "\n" +
 		"▫ <b>" + smallcaps("requester") + " :</b> " + richEsc(song.Requester) + "</blockquote>"
@@ -91,10 +91,10 @@ func incomingTrackHTML(index int, song Song) string {
 	if strings.TrimSpace(link) == "" {
 		link = "#"
 	}
-	return "<blockquote><b>Ὂe " + smallcaps("incoming track detected") + " : #" + fmt.Sprintf("%d", index) + "</b></blockquote>\n" +
+	return "<blockquote><b>἞ " + smallcaps("incoming track detected") + " : #" + fmt.Sprintf("%d", index) + "</b></blockquote>\n" +
 		"<blockquote expandable><b>🎋 " + smallcaps("melody") + " :</b> <a href=\"" + html.EscapeString(link) + "\">" + richEsc(shortTitle(song.Title, 35)) + "</a>\n" +
 		"<b>✨ " + smallcaps("length") + " :</b> " + richEsc(song.Duration) + "\n" +
-		"<b>🏚 " + smallcaps("requester") + " :</b> " + richEsc(song.Requester) + "\n\n" +
+		"<b>🏗 " + smallcaps("requester") + " :</b> " + richEsc(song.Requester) + "\n\n" +
 		"💐 " + smallcaps("standby, your session begins shortly") + "</blockquote>"
 }
 
@@ -117,7 +117,7 @@ func queueListHTML(q []Song) string {
 	fmt.Fprintf(&b, "🎧 <a href=\"%s\">%s</a> — %s [%s]\n\n",
 		html.EscapeString(cur.URL), richEsc(shortTitle(cur.Title, 35)), richEsc(cur.Requester), richEsc(cur.Duration))
 	if len(q) == 1 {
-		b.WriteString("<i>🗭 " + smallcaps("no more songs in queue") + ".</i>")
+		b.WriteString("<i>🗁 " + smallcaps("no more songs in queue") + ".</i>")
 		return b.String()
 	}
 	rest := q[1:]
