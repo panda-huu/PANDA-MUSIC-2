@@ -174,6 +174,11 @@ func handleCallbackQuery(cb *telegram.CallbackQuery) error {
 		_, _ = cb.Answer("queue cleared")
 	case data == "noop":
 		_, _ = cb.Answer("")
+	case data == "dev_open":
+		_, _ = cb.Answer("")
+		if chatID != 0 && OwnerID != 0 {
+			_, _ = sendHTML(Bot, chatID, "<a href=\"tg://user?id="+fmt.Sprintf("%d", OwnerID)+"\">"+smallcaps("developer")+"</a>", nil)
+		}
 	case data == "about_menu":
 		_, _ = cb.Answer("")
 		if !editQuotedCaption(cb, aboutInner(), GetAboutMarkup()) {
