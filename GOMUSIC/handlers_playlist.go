@@ -48,23 +48,16 @@ func playlistMarkup(uid int64) [][]InlineBtn {
 	items := append([]plItem(nil), userPL[uid]...)
 	plMu.Unlock()
 	colors := []string{ColourRed, ColourBlue, ColourGreen}
-	rows := [][]InlineBtn{
-		{styleBtn(smallcaps("audio"), "noop", ColourGreen)},
-	}
+	var rows [][]InlineBtn
 	for i, it := range items {
-		label := shortTitle(it.Title, 22)
+		label := shortTitle(it.Title, 18)
 		if label == "" {
 			label = smallcaps("song")
 		}
-		rows = append(rows, []InlineBtn{styleBtn(label, fmt.Sprintf("pl_a:%d", i), colors[i%3])})
-	}
-	rows = append(rows, []InlineBtn{styleBtn(smallcaps("video"), "noop", ColourRed)})
-	for i, it := range items {
-		label := shortTitle(it.Title, 22)
-		if label == "" {
-			label = smallcaps("song")
-		}
-		rows = append(rows, []InlineBtn{styleBtn(label, fmt.Sprintf("pl_v:%d", i), colors[(i+1)%3])})
+		rows = append(rows, []InlineBtn{
+			styleBtn(smallcaps("audio")+" · "+label, fmt.Sprintf("pl_a:%d", i), colors[i%3]),
+			styleBtn(smallcaps("video")+" · "+label, fmt.Sprintf("pl_v:%d", i), colors[(i+1)%3]),
+		})
 	}
 	rows = append(rows, []InlineBtn{styleBtn(smallcaps("close"), "pl_done", ColourRed)})
 	return rows
@@ -164,6 +157,21 @@ func handlePlaylistListen(m *telegram.NewMessage) error {
 	return nil
 }
 
+func playlistChatID(cb *telegram.CallbackQuery) int64 {
+	if cb == nil {
+		return 0
+	}
+	chatID := cb.ChatID
+	msg, _ := cb.GetMessage()
+	if chatID == 0 && msg != nil {
+		chatID = msg.ChatID()
+	}
+	if chatID == 0 && msg != nil {
+		chatID = msgBotChatID(msg)
+	}
+	return chatID
+}
+
 func handlePlaylistCallback(cb *telegram.CallbackQuery, data string) bool {
 	if cb == nil {
 		return false
@@ -181,13 +189,11 @@ func handlePlaylistCallback(cb *telegram.CallbackQuery, data string) bool {
 		return true
 	case strings.HasPrefix(data, "pl_a:") || strings.HasPrefix(data, "pl_v:"):
 		video := strings.HasPrefix(data, "pl_v:")
-		idxStr := strings.TrimPrefix(strings.TrimPrefix(data, "pl_a:"), "pl_v:")
+		idxStr := strings.TrimPrefix(data, "pl_a:")
+		idxStr = strings.TrimPrefix(idxStr, "pl_v:")
 		idx := 0
 		fmt.Sscanf(idxStr, "%d", &idx)
-		chatID := cb.ChatID
-		if msg, _ := cb.GetMessage(); chatID == 0 && msg != nil {
-			chatID = msg.ChatID()
-		}
+		chatID := playlistChatID(cb)
 		if chatID >= 0 {
 			_, _ = cb.Answer(smallcaps("play playlist in group"), alert)
 			return true
