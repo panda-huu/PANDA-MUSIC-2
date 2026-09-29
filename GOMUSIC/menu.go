@@ -180,7 +180,7 @@ func sendQuotedPhoto(chatID int64, inner string, rows [][]InlineBtn) (*telegram.
 	})
 	if err == nil {
 		if msg != nil {
-			editStartCaption(canonChatID(chatID), msg.ID, inner, rows)
+			editStartCaption(canonChatID(chatID), int(msg.ID), inner, rows)
 		}
 		return msg, nil
 	}
