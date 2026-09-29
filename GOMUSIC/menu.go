@@ -8,12 +8,16 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/amarnathcjd/gogram/telegram"
 )
 
-var menuHTTP = &http.Client{Timeout: 25 * time.Second}
+var (
+	menuHTTP   = &http.Client{Timeout: 8 * time.Second}
+	menuEditID sync.Map
+)
 
 func styleFromColour(colour string) *telegram.KeyboardButtonStyle {
 	switch strings.ToLower(colour) {
@@ -119,27 +123,53 @@ func quotedCaption(inner string) string {
 	return "<blockquote>" + inner + "</blockquote>"
 }
 
-func editStartCaption(chatID int64, msgID int, inner string, rows [][]InlineBtn) {
+func menuEditIDs(chatID int64, msgID int) []int64 {
+	seen := map[int64]bool{}
+	var out []int64
+	add := func(id int64) {
+		if id == 0 || seen[id] {
+			return
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	if v, ok := menuEditID.Load(msgID); ok {
+		if id, _ := v.(int64); id != 0 {
+			add(id)
+		}
+	}
+	add(canonChatID(chatID))
+	add(chatID)
+	return out
+}
+
+func fastEditCaption(chatID int64, msgID int, inner string, rows [][]InlineBtn) bool {
 	if chatID == 0 || msgID == 0 {
-		return
+		return false
 	}
 	caption := quotedCaption(inner)
-	try := func(withStyle bool) error {
+	kb := apiMarkup(rows, true)
+	for _, id := range menuEditIDs(chatID, msgID) {
 		body := map[string]any{
-			"chat_id":    chatID,
+			"chat_id":    id,
 			"message_id": msgID,
 			"caption":    caption,
 			"parse_mode": "HTML",
 		}
-		if kb := apiMarkup(rows, withStyle); kb != nil {
+		if kb != nil {
 			body["reply_markup"] = kb
 		}
-		return botAPICall("editMessageCaption", body)
+		err := botAPICall("editMessageCaption", body)
+		if err == nil || (err != nil && strings.Contains(strings.ToLower(err.Error()), "not modified")) {
+			menuEditID.Store(msgID, id)
+			return true
+		}
 	}
-	if err := try(true); err == nil || (err != nil && strings.Contains(strings.ToLower(err.Error()), "not modified")) {
-		return
-	}
-	_ = try(false)
+	return false
+}
+
+func editStartCaption(chatID int64, msgID int, inner string, rows [][]InlineBtn) {
+	_ = fastEditCaption(chatID, msgID, inner, rows)
 }
 
 func sendQuotedPhoto(chatID int64, inner string, rows [][]InlineBtn) (*telegram.NewMessage, error) {
@@ -149,47 +179,35 @@ func sendQuotedPhoto(chatID int64, inner string, rows [][]InlineBtn) (*telegram.
 	caption := quotedCaption(inner)
 	photo := pickStartPhoto()
 	apiChatID := canonChatID(chatID)
-	tryAPI := func(withStyle bool) (int, error) {
-		body := map[string]any{
-			"chat_id":    apiChatID,
-			"photo":      photo,
-			"caption":    caption,
-			"parse_mode": "HTML",
-		}
-		if kb := apiMarkup(rows, withStyle); kb != nil {
-			body["reply_markup"] = kb
-		}
-		return botAPICallID("sendPhoto", body)
+	body := map[string]any{
+		"chat_id":    apiChatID,
+		"photo":      photo,
+		"caption":    caption,
+		"parse_mode": "HTML",
 	}
-	if id, err := tryAPI(true); err == nil {
-		editStartCaption(apiChatID, id, inner, rows)
-		return nil, nil
-	} else {
-		log.Println("sendPhoto styled:", err)
+	if kb := apiMarkup(rows, true); kb != nil {
+		body["reply_markup"] = kb
 	}
-	if id, err := tryAPI(false); err == nil {
-		editStartCaption(apiChatID, id, inner, rows)
+	if id, err := botAPICallID("sendPhoto", body); err == nil {
+		menuEditID.Store(id, apiChatID)
 		return nil, nil
-	} else {
-		log.Println("sendPhoto plain:", err)
 	}
 	msg, err := Bot.SendMedia(chatID, photo, &telegram.MediaOptions{
 		Caption:     caption,
 		ParseMode:   "HTML",
 		ReplyMarkup: gogramMarkup(rows),
 	})
-	if err == nil {
-		if msg != nil {
-			editStartCaption(canonChatID(chatID), int(msg.ID), inner, rows)
-		}
+	if err == nil && msg != nil {
+		menuEditID.Store(int(msg.ID), canonChatID(chatID))
 		return msg, nil
 	}
-	log.Println("sendPhoto gogram fallback failed:", err)
+	log.Println("sendPhoto failed:", err)
 	return Bot.SendMessage(chatID, caption, &telegram.SendOptions{
 		ParseMode:   "HTML",
 		ReplyMarkup: gogramMarkup(rows),
 	})
 }
+
 func showQuotedMenu(cb *telegram.CallbackQuery, inner string, rows [][]InlineBtn) {
 	if cb == nil {
 		return
@@ -203,46 +221,8 @@ func showQuotedMenu(cb *telegram.CallbackQuery, inner string, rows [][]InlineBtn
 	if msgID == 0 && msg != nil {
 		msgID = msg.ID
 	}
-	caption := quotedCaption(inner)
-	photo := pickStartPhoto()
-	tryEdit := func(withStyle bool) error {
-		body := map[string]any{
-			"chat_id":    chatID,
-			"message_id": msgID,
-			"media": map[string]any{
-				"type":       "photo",
-				"media":      photo,
-				"caption":    caption,
-				"parse_mode": "HTML",
-			},
-		}
-		if kb := apiMarkup(rows, withStyle); kb != nil {
-			body["reply_markup"] = kb
-		}
-		return botAPICall("editMessageMedia", body)
-	}
-	if err := tryEdit(true); err == nil || (err != nil && strings.Contains(strings.ToLower(err.Error()), "not modified")) {
-		return
-	} else {
-		log.Println("editMessageMedia styled:", err)
-	}
-	if err := tryEdit(false); err == nil || (err != nil && strings.Contains(strings.ToLower(err.Error()), "not modified")) {
-		return
-	} else {
-		log.Println("editMessageMedia plain:", err)
-	}
-	ents, plain := Bot.FormatMessage(caption, "HTML")
-	_, err := Bot.EditMessage(chatID, msgID, plain, &telegram.SendOptions{
-		Entities:    ents,
-		Media:       &telegram.InputMediaPhotoExternal{URL: photo},
-		ReplyMarkup: gogramMarkup(rows),
-	})
-	if err == nil || isNotModified(err) {
+	if fastEditCaption(chatID, int(msgID), inner, rows) {
 		return
 	}
-	log.Println("gogram edit:", err)
 	_, _ = sendQuotedPhoto(chatID, inner, rows)
-	if msg != nil {
-		_, _ = msg.Delete()
-	}
 }
