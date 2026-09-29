@@ -2,19 +2,38 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 
 	"github.com/amarnathcjd/gogram/telegram"
 )
 
-type welcomeCfg struct {
-	On    bool
-	Text  string
-	Photo string
+type welcomeBtn struct {
+	Text   string
+	URL    string
+	Same   bool
+	Colour string
 }
 
-var welcomeStore sync.Map
+type welcomeCfg struct {
+	On      bool
+	Text    string
+	Photo   string
+	Buttons []welcomeBtn
+}
+
+type welSession struct {
+	ChatID int64
+	MsgID  int
+	Mode   string
+}
+
+var (
+	welcomeStore sync.Map
+	welSess     sync.Map
+	reWelcomeBtn = regexp.MustCompile(`(?i)\[([^\]]+)\]\(buttonurl://([^)]+)\)`)
+)
 
 func defaultWelcomeText() string {
 	return "<blockquote><b>" + smallcaps("welcome") + "</b> {mention}</blockquote>\n" +
@@ -36,18 +55,103 @@ func saveWelcome(chatID int64, cfg welcomeCfg) {
 	welcomeStore.Store(canonChatID(chatID), cfg)
 }
 
-func fillWelcome(tpl string, uid int64, name, uname, chat string, count int) string {
+func welcomePanelCaption(chatID int64) string {
+	cfg := welcomeOf(chatID)
+	st := smallcaps("off")
+	if cfg.On {
+		st = smallcaps("on")
+	}
+	n := len(cfg.Buttons)
+	return "<blockquote><b>" + smallcaps("welcome settings") + "</b></blockquote>\n" +
+		"<blockquote expandable>" + smallcaps("status") + " : <b>" + st + "</b>\n" +
+			smallcaps("buttons") + " : <code>" + fmt.Sprintf("%d", n) + "</code>\n\n" +
+			smallcaps("placeholders") + " : {mention} {name} {username} {id} {chat}\n" +
+			smallcaps("or use") + " [rules](buttonurl://https://t.me/xxx)</blockquote>"
+}
+
+func welcomePanelMarkup(chatID int64) [][]InlineBtn {
+	_ = chatID
+	return [][]InlineBtn{
+		{
+			styleBtn(smallcaps("enable"), "wel_on", ColourGreen),
+			styleBtn(smallcaps("disable"), "wel_off", ColourRed),
+		},
+		{
+			styleBtn(smallcaps("set text"), "wel_set", ColourBlue),
+			styleBtn(smallcaps("add btn"), "wel_btn", ColourGreen),
+		},
+		{
+			styleBtn(smallcaps("reset"), "wel_reset", ColourRed),
+			styleBtn(smallcaps("test"), "wel_test", ColourBlue),
+		},
+		{styleBtn(smallcaps("close"), "wel_close", ColourBlue)},
+	}
+}
+
+func welcomeJoinMarkup(cfg welcomeCfg) [][]InlineBtn {
+	var rows [][]InlineBtn
+	var row []InlineBtn
+	colors := []string{ColourRed, ColourBlue, ColourGreen}
+	for i, b := range cfg.Buttons {
+		if b.Text == "" || b.URL == "" {
+			continue
+		}
+		col := b.Colour
+		if col == "" {
+			col = colors[i%3]
+		}
+		btn := styleURLBtn(b.Text, b.URL, col)
+		if b.Same && len(row) > 0 {
+			row = append(row, btn)
+		} else {
+			if len(row) > 0 {
+				rows = append(rows, row)
+			}
+			row = []InlineBtn{btn}
+		}
+	}
+	if len(row) > 0 {
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func parseWelcomeButtons(text string) (string, []welcomeBtn) {
+	var btns []welcomeBtn
+	colors := []string{ColourRed, ColourBlue, ColourGreen}
+	clean := reWelcomeBtn.ReplaceAllStringFunc(text, func(m string) string {
+		parts := reWelcomeBtn.FindStringSubmatch(m)
+		if len(parts) < 3 {
+			return ""
+		}
+		url := strings.TrimSpace(parts[2])
+		same := false
+		if strings.HasSuffix(strings.ToLower(url), ":same") {
+			same = true
+			url = strings.TrimSuffix(url, ":same")
+			url = strings.TrimSuffix(url, ":SAME")
+		}
+		btns = append(btns, welcomeBtn{
+			Text:   strings.TrimSpace(parts[1]),
+			URL:    strings.TrimSpace(url),
+			Same:   same,
+			Colour: colors[len(btns)%3],
+		})
+		return ""
+	})
+	return strings.TrimSpace(clean), btns
+}
+
+func fillWelcome(tpl string, uid int64, name, uname, chat string) string {
 	if strings.TrimSpace(tpl) == "" {
 		tpl = defaultWelcomeText()
 	}
-	mention := mentionHTML(uid, name)
 	repl := map[string]string{
-		"{mention}":  mention,
+		"{mention}":  mentionHTML(uid, name),
 		"{name}":     richEsc(name),
 		"{username}": richEsc(uname),
 		"{id}":       fmt.Sprintf("%d", uid),
 		"{chat}":     richEsc(chat),
-		"{count}":    fmt.Sprintf("%d", count),
 	}
 	out := tpl
 	for k, v := range repl {
@@ -58,18 +162,19 @@ func fillWelcome(tpl string, uid int64, name, uname, chat string, count int) str
 
 func sendWelcome(chatID int64, uid int64, name, uname string) {
 	cfg := welcomeOf(chatID)
-	if !cfg.On {
+	if !cfg.On || uid == 0 || uid == botSelfID() {
 		return
 	}
-	if uid == 0 || uid == botSelfID() {
-		return
-	}
-	chat := chatTitleOf(chatID)
-	body := fillWelcome(cfg.Text, uid, name, uname, chat, 0)
+	body := fillWelcome(cfg.Text, uid, name, uname, chatTitleOf(chatID))
+	rows := welcomeJoinMarkup(cfg)
 	if cfg.Photo != "" {
 		body = richImg(cfg.Photo) + body
 	}
-	_, _ = sendHTML(Bot, canonChatID(chatID), body, nil)
+	_, _ = sendHTML(Bot, canonChatID(chatID), body, gogramMarkup(rows))
+}
+
+func showWelcomePanel(chatID int64) {
+	_, _ = sendQuotedPhoto(chatID, welcomePanelCaption(chatID), welcomePanelMarkup(chatID))
 }
 
 func handleWelcome(m *telegram.NewMessage) error {
@@ -85,28 +190,13 @@ func handleWelcome(m *telegram.NewMessage) error {
 	switch arg {
 	case "on", "enable", "true", "1":
 		cfg.On = true
-		if strings.TrimSpace(cfg.Text) == "" {
-			cfg.Text = defaultWelcomeText()
-		}
 		saveWelcome(chatID, cfg)
-		_, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("welcome enabled")), nil)
 	case "off", "disable", "false", "0":
 		cfg.On = false
 		saveWelcome(chatID, cfg)
-		_, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("welcome disabled")), nil)
-	default:
-		st := smallcaps("off")
-		if cfg.On {
-			st = smallcaps("on")
-		}
-		body := "<blockquote><b>" + smallcaps("welcome") + " : " + st + "</b></blockquote>\n" +
-			"<blockquote expandable>" + smallcaps("use") + " <code>/welcome on</code> / <code>/welcome off</code>\n" +
-			smallcaps("set text with") + " <code>/setwelcome</code>\n" +
-			smallcaps("reset with") + " <code>/resetwelcome</code>\n\n" +
-			smallcaps("placeholders") + " : {mention} {name} {username} {id} {chat} {count}</blockquote>"
-		_, _ = sendHTML(Bot, chatID, body, nil)
 	}
 	_, _ = m.Delete()
+	showWelcomePanel(chatID)
 	return nil
 }
 
@@ -119,17 +209,20 @@ func handleSetWelcome(m *telegram.NewMessage) error {
 	}
 	chatID := canonChatID(m.ChatID())
 	text := strings.TrimSpace(cmdArgs(m))
+	_, _ = m.Delete()
 	if text == "" {
-		_, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("usage")+"\n<code>/setwelcome welcome {mention} to {chat}</code>"), nil)
-		_, _ = m.Delete()
+		_, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("send")+" /setwelcome welcome {mention}\n[rules](buttonurl://https://t.me/xxx)"), nil)
 		return nil
 	}
+	clean, btns := parseWelcomeButtons(text)
 	cfg := welcomeOf(chatID)
-	cfg.Text = text
+	cfg.Text = clean
+	if len(btns) > 0 {
+		cfg.Buttons = btns
+	}
 	cfg.On = true
 	saveWelcome(chatID, cfg)
-	_, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("custom welcome saved")), nil)
-	_, _ = m.Delete()
+	showWelcomePanel(chatID)
 	return nil
 }
 
@@ -141,11 +234,120 @@ func handleResetWelcome(m *telegram.NewMessage) error {
 		return nil
 	}
 	chatID := canonChatID(m.ChatID())
-	on := welcomeOf(chatID).On
-	saveWelcome(chatID, welcomeCfg{On: on, Text: defaultWelcomeText()})
-	_, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("welcome reset to default")), nil)
+	saveWelcome(chatID, welcomeCfg{On: welcomeOf(chatID).On, Text: defaultWelcomeText()})
 	_, _ = m.Delete()
+	showWelcomePanel(chatID)
 	return nil
+}
+
+func handleWelcomeListen(m *telegram.NewMessage) error {
+	if m == nil || blocked(m) || m.IsPrivate() {
+		return nil
+	}
+	text := strings.TrimSpace(m.Text())
+	if text == "" || strings.HasPrefix(text, "/") {
+		return nil
+	}
+	uid := userIDOf(m)
+	v, ok := welSess.Load(uid)
+	if !ok {
+		return nil
+	}
+	sess, _ := v.(*welSession)
+	if sess == nil || !samePlaylistChat(sess.ChatID, m.ChatID()) {
+		return nil
+	}
+	_, _ = m.Delete()
+	cfg := welcomeOf(sess.ChatID)
+	switch sess.Mode {
+	case "set":
+		clean, btns := parseWelcomeButtons(text)
+		cfg.Text = clean
+		if len(btns) > 0 {
+			cfg.Buttons = append(cfg.Buttons, btns...)
+		}
+		cfg.On = true
+	case "btn":
+		parts := strings.SplitN(text, "|", 3)
+		if len(parts) < 2 {
+			editPlaylistPanel(sess.ChatID, sess.MsgID, wrapBQ(smallcaps("use")+" Name | https://t.me/xxx"), welcomePanelMarkup(sess.ChatID))
+			return nil
+		}
+		label := strings.TrimSpace(parts[0])
+		url := strings.TrimSpace(parts[1])
+		same := len(parts) > 2 && strings.Contains(strings.ToLower(parts[2]), "same")
+		colors := []string{ColourRed, ColourBlue, ColourGreen}
+		cfg.Buttons = append(cfg.Buttons, welcomeBtn{
+			Text: label, URL: url, Same: same, Colour: colors[len(cfg.Buttons)%3],
+		})
+	}
+	saveWelcome(sess.ChatID, cfg)
+	welSess.Delete(uid)
+	editPlaylistPanel(sess.ChatID, sess.MsgID, welcomePanelCaption(sess.ChatID), welcomePanelMarkup(sess.ChatID))
+	return nil
+}
+
+func handleWelcomeCallback(cb *telegram.CallbackQuery, data string) bool {
+	if cb == nil || cb.Sender == nil || !strings.HasPrefix(data, "wel_") {
+		return false
+	}
+	chatID := playlistChatID(cb)
+	alert := &telegram.CallbackOptions{Alert: true}
+	if !isOwner(cb.Sender.ID) {
+		member, err := Bot.GetChatMember(chatID, cb.Sender.ID)
+		ok := false
+		if err == nil && member != nil {
+			st := strings.ToLower(fmt.Sprint(member.Status))
+			ok = strings.Contains(st, "admin") || strings.Contains(st, "creator") || strings.Contains(st, "owner")
+		}
+		if !ok {
+			_, _ = cb.Answer(smallcaps("admins only"), alert)
+			return true
+		}
+	}
+	cfg := welcomeOf(chatID)
+	switch data {
+	case "wel_on":
+		cfg.On = true
+		saveWelcome(chatID, cfg)
+		_, _ = cb.Answer(smallcaps("enabled"))
+	case "wel_off":
+		cfg.On = false
+		saveWelcome(chatID, cfg)
+		_, _ = cb.Answer(smallcaps("disabled"))
+	case "wel_reset":
+		saveWelcome(chatID, welcomeCfg{On: cfg.On, Text: defaultWelcomeText()})
+		_, _ = cb.Answer(smallcaps("reset"))
+	case "wel_test":
+		_, _ = cb.Answer(smallcaps("preview"))
+		name := sanitizeDisplayName(cb.Sender.FirstName)
+		uname := "-"
+		if cb.Sender.Username != "" {
+			uname = "@" + cb.Sender.Username
+		}
+		sendWelcome(chatID, cb.Sender.ID, name, uname)
+		return true
+	case "wel_set":
+		welSess.Store(cb.Sender.ID, &welSession{ChatID: chatID, MsgID: int(cb.MessageID), Mode: "set"})
+		_, _ = cb.Answer("")
+		_ = editQuotedCaption(cb, wrapBQ(smallcaps("send welcome text now")), welcomePanelMarkup(chatID))
+		return true
+	case "wel_btn":
+		welSess.Store(cb.Sender.ID, &welSession{ChatID: chatID, MsgID: int(cb.MessageID), Mode: "btn"})
+		_, _ = cb.Answer("")
+		_ = editQuotedCaption(cb, wrapBQ(smallcaps("send")+" Name | https://t.me/link\n"+smallcaps("same row")+" Name | url | same"), welcomePanelMarkup(chatID))
+		return true
+	case "wel_close":
+		_, _ = cb.Answer(smallcaps("closed"))
+		if msg, _ := cb.GetMessage(); msg != nil {
+			_, _ = msg.Delete()
+		}
+		return true
+	default:
+		return false
+	}
+	_ = editQuotedCaption(cb, welcomePanelCaption(chatID), welcomePanelMarkup(chatID))
+	return true
 }
 
 func handleWelcomeParticipant(p *telegram.ParticipantUpdate) error {
@@ -158,8 +360,7 @@ func handleWelcomeParticipant(p *telegram.ParticipantUpdate) error {
 	if p.User.ID == botSelfID() {
 		return nil
 	}
-	chatID := canonChatID(p.ChannelID())
 	name, uname, uid := userBits(p.User)
-	sendWelcome(chatID, uid, name, uname)
+	sendWelcome(canonChatID(p.ChannelID()), uid, name, uname)
 	return nil
 }
