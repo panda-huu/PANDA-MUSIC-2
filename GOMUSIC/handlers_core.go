@@ -174,7 +174,7 @@ func pickStartPhoto() string {
 }
 
 func startInner(uid int64, name string) string { return startPrivateHTML(uid, name, BotName) }
-func aboutInner() string                       { return startInner(OwnerID, BotName) }
+func aboutInner() string                       { return aboutHTML() }
 func helpInner(uid int64, name string) string  { return helpMainHTML() }
 func startCaption(uid int64, name string) string {
 	return startInner(uid, name)
