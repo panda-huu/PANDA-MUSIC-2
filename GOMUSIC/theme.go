@@ -9,6 +9,7 @@ import (
 var (
 	btnAddMe     = " " + smallcaps("add me to your group")
 	btnHelpStart = " " + smallcaps("help & commands")
+	btnAbout     = " " + smallcaps("about")
 	btnUpdates   = " " + smallcaps("updates")
 	btnSupport   = smallcaps("support")
 	btnSource    = " " + smallcaps("devloper")
@@ -44,6 +45,22 @@ func startPrivateHTML(uid int64, name, bot string) string {
 		"<b>✧ " + smallcaps("use help to view all commands and features") + "</b></blockquote>"
 }
 
+func aboutHTML() string {
+	bot := richEsc(BotName)
+	return "<blockquote><b>✧ " + smallcaps("about") + " " + bot + "</b></blockquote>\n" +
+		"<blockquote expandable>" +
+		"<b>✧ " + smallcaps("engine") + " :</b> " + smallcaps("go") + " / gogram\n" +
+		"<b>✧ " + smallcaps("voice chat") + " :</b> ntgcalls\n" +
+		"<b>✧ " + smallcaps("media") + " :</b> ffmpeg + yt-dlp\n" +
+		"<b>✧ " + smallcaps("download api") + " :</b> ARU-YT\n" +
+		"<b>✧ " + smallcaps("source") + " :</b> youtube\n" +
+		"<b>•──────────────•</b>\n" +
+		"<b>✧ " + smallcaps("fast lightweight music bot for telegram groups") + "</b>\n" +
+		"<b>✧ " + smallcaps("audio and video streams inside voice chat") + "</b>\n" +
+		"<b>✧ " + smallcaps("queue autoplay seek and player panel included") + "</b>" +
+		"</blockquote>"
+}
+
 func startGroupHTML() string {
 	return "<blockquote><b>💫 " + smallcaps("i am here") + "!</b> " + smallcaps("try a command") + "</blockquote>"
 }
@@ -63,7 +80,7 @@ func streamNowPlayingHTML(song Song) string {
 	if strings.TrimSpace(link) == "" {
 		link = "#"
 	}
-	return "<blockquote><b>💮 " + smallcaps("playback activated") + " | " + smallcaps("enjoy the music") + " |</b></blockquote>\n" +
+	return "<blockquote><b>Ὂe " + smallcaps("playback activated") + " | " + smallcaps("enjoy the music") + " |</b></blockquote>\n" +
 		"<blockquote expandable>▫ <b>" + smallcaps("melody") + " :</b> <a href=\"" + html.EscapeString(link) + "\">" + richEsc(shortTitle(song.Title, 48)) + "</a>\n" +
 		"▫ <b>" + smallcaps("length") + " :</b> " + richEsc(song.Duration) + "\n" +
 		"▫ <b>" + smallcaps("requester") + " :</b> " + richEsc(song.Requester) + "</blockquote>"
@@ -74,10 +91,10 @@ func incomingTrackHTML(index int, song Song) string {
 	if strings.TrimSpace(link) == "" {
 		link = "#"
 	}
-	return "<blockquote><b>💮 " + smallcaps("incoming track detected") + " : #" + fmt.Sprintf("%d", index) + "</b></blockquote>\n" +
+	return "<blockquote><b>Ὂe " + smallcaps("incoming track detected") + " : #" + fmt.Sprintf("%d", index) + "</b></blockquote>\n" +
 		"<blockquote expandable><b>🎋 " + smallcaps("melody") + " :</b> <a href=\"" + html.EscapeString(link) + "\">" + richEsc(shortTitle(song.Title, 35)) + "</a>\n" +
 		"<b>✨ " + smallcaps("length") + " :</b> " + richEsc(song.Duration) + "\n" +
-		"<b>🥀 " + smallcaps("requester") + " :</b> " + richEsc(song.Requester) + "\n\n" +
+		"<b>🏚 " + smallcaps("requester") + " :</b> " + richEsc(song.Requester) + "\n\n" +
 		"💐 " + smallcaps("standby, your session begins shortly") + "</blockquote>"
 }
 
@@ -100,7 +117,7 @@ func queueListHTML(q []Song) string {
 	fmt.Fprintf(&b, "🎧 <a href=\"%s\">%s</a> — %s [%s]\n\n",
 		html.EscapeString(cur.URL), richEsc(shortTitle(cur.Title, 35)), richEsc(cur.Requester), richEsc(cur.Duration))
 	if len(q) == 1 {
-		b.WriteString("<i>📭 " + smallcaps("no more songs in queue") + ".</i>")
+		b.WriteString("<i>🗭 " + smallcaps("no more songs in queue") + ".</i>")
 		return b.String()
 	}
 	rest := q[1:]
