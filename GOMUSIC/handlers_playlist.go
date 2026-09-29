@@ -18,9 +18,11 @@ type plItem struct {
 }
 
 type plSession struct {
-	ChatID  int64
-	MsgID   int
-	Waiting bool
+	ChatID      int64
+	MsgID       int
+	Waiting     bool
+	Deleting    bool
+	PendingName string
 }
 
 var (
@@ -43,6 +45,28 @@ func playlistSearchingCaption() string {
 	return "<blockquote><b>" + smallcaps("searching song") + "......</b></blockquote>"
 }
 
+func playlistDeletePrompt() string {
+	return "<blockquote><b>" + smallcaps("wanna to delete playlists songs send name") + "</b></blockquote>"
+}
+
+func playlistSelectFormat() string {
+	return "<blockquote><b>" + smallcaps("select format") + "</b></blockquote>"
+}
+
+func playlistDeleteProgress() string {
+	return "<blockquote><b>" + smallcaps("delete in progress") + "</b></blockquote>"
+}
+
+func playlistMainCaption(uid int64) string {
+	plMu.Lock()
+	n := len(userPL[uid])
+	plMu.Unlock()
+	if n == 0 {
+		return playlistPrompt()
+	}
+	return playlistAddedCaption()
+}
+
 func playlistMarkup(uid int64) [][]InlineBtn {
 	plMu.Lock()
 	items := append([]plItem(nil), userPL[uid]...)
@@ -50,7 +74,7 @@ func playlistMarkup(uid int64) [][]InlineBtn {
 	colors := []string{ColourRed, ColourBlue, ColourGreen}
 	var rows [][]InlineBtn
 	for i, it := range items {
-		label := shortTitle(it.Title, 18)
+		label := shortTitle(it.Title, 16)
 		if label == "" {
 			label = smallcaps("song")
 		}
@@ -59,8 +83,18 @@ func playlistMarkup(uid int64) [][]InlineBtn {
 			styleBtn(smallcaps("video")+" · "+label, fmt.Sprintf("pl_v:%d", i), colors[(i+1)%3]),
 		})
 	}
-	rows = append(rows, []InlineBtn{styleBtn(smallcaps("close"), "pl_done", ColourRed)})
+	rows = append(rows, []InlineBtn{
+		styleBtn(smallcaps("delete"), "pl_del", ColourRed),
+		styleBtn(smallcaps("close"), "pl_done", ColourBlue),
+	})
 	return rows
+}
+
+func playlistDeleteFormatMarkup() [][]InlineBtn {
+	return [][]InlineBtn{
+		{styleBtn(smallcaps("audio"), "pl_delfmt:a", ColourGreen), styleBtn(smallcaps("video"), "pl_delfmt:v", ColourRed)},
+		{styleBtn(smallcaps("back"), "pl_delback", ColourBlue)},
+	}
 }
 
 func editPlaylistPanel(chatID int64, msgID int, inner string, rows [][]InlineBtn) {
@@ -96,6 +130,9 @@ func handlePlaylist(m *telegram.NewMessage) error {
 	if blocked(m) {
 		return nil
 	}
+	if cmdRoot(m) != "playlist" {
+		return nil
+	}
 	uid := userIDOf(m)
 	chatID := m.ChatID()
 	_, _ = m.Delete()
@@ -127,7 +164,18 @@ func handlePlaylistListen(m *telegram.NewMessage) error {
 	plMu.Lock()
 	sess := plSess[uid]
 	plMu.Unlock()
-	if sess == nil || !sess.Waiting || sess.ChatID != m.ChatID() {
+	if sess == nil || sess.ChatID != m.ChatID() {
+		return nil
+	}
+	if sess.Deleting && sess.PendingName == "" {
+		_, _ = m.Delete()
+		plMu.Lock()
+		sess.PendingName = text
+		plMu.Unlock()
+		editPlaylistPanel(sess.ChatID, sess.MsgID, playlistSelectFormat(), playlistDeleteFormatMarkup())
+		return nil
+	}
+	if !sess.Waiting || sess.Deleting {
 		return nil
 	}
 	_, _ = m.Delete()
@@ -163,29 +211,121 @@ func playlistChatID(cb *telegram.CallbackQuery) int64 {
 	}
 	chatID := cb.ChatID
 	msg, _ := cb.GetMessage()
-	if chatID == 0 && msg != nil {
-		chatID = msg.ChatID()
-	}
-	if chatID == 0 && msg != nil {
-		chatID = msgBotChatID(msg)
+	if msg != nil {
+		if id := msg.ChatID(); id != 0 {
+			chatID = id
+		}
+		if id := msgBotChatID(msg); id != 0 {
+			chatID = id
+		}
 	}
 	return chatID
 }
 
+func playlistIsPrivate(cb *telegram.CallbackQuery) bool {
+	msg, _ := cb.GetMessage()
+	if msg != nil && msg.IsPrivate() {
+		return true
+	}
+	if cb.Sender != nil && cb.ChatID == cb.Sender.ID {
+		return true
+	}
+	return false
+}
+
+func removePlaylistSong(uid int64, name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
+		return false
+	}
+	plMu.Lock()
+	defer plMu.Unlock()
+	items := userPL[uid]
+	for i, it := range items {
+		t := strings.ToLower(it.Title)
+		if strings.Contains(t, name) || strings.Contains(name, t) {
+			userPL[uid] = append(items[:i], items[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
 func handlePlaylistCallback(cb *telegram.CallbackQuery, data string) bool {
-	if cb == nil {
+	if cb == nil || cb.Sender == nil {
 		return false
 	}
 	alert := &telegram.CallbackOptions{Alert: true}
+	uid := cb.Sender.ID
 	switch {
 	case data == "pl_done":
-		uid := cb.Sender.ID
 		plMu.Lock()
 		if s := plSess[uid]; s != nil {
 			s.Waiting = false
+			s.Deleting = false
+			s.PendingName = ""
 		}
 		plMu.Unlock()
 		_, _ = cb.Answer(smallcaps("closed"))
+		return true
+	case data == "pl_del":
+		plMu.Lock()
+		s := plSess[uid]
+		if s == nil {
+			s = &plSession{}
+			plSess[uid] = s
+		}
+		s.Waiting = false
+		s.Deleting = true
+		s.PendingName = ""
+		chatID, msgID := s.ChatID, s.MsgID
+		plMu.Unlock()
+		_, _ = cb.Answer("")
+		editPlaylistPanel(chatID, msgID, playlistDeletePrompt(), [][]InlineBtn{
+			{styleBtn(smallcaps("back"), "pl_delback", ColourBlue)},
+		})
+		return true
+	case data == "pl_delback":
+		plMu.Lock()
+		s := plSess[uid]
+		if s != nil {
+			s.Deleting = false
+			s.PendingName = ""
+			s.Waiting = true
+		}
+		chatID, msgID := int64(0), 0
+		if s != nil {
+			chatID, msgID = s.ChatID, s.MsgID
+		}
+		plMu.Unlock()
+		_, _ = cb.Answer("")
+		editPlaylistPanel(chatID, msgID, playlistMainCaption(uid), playlistMarkup(uid))
+		return true
+	case data == "pl_delfmt:a" || data == "pl_delfmt:v":
+		plMu.Lock()
+		s := plSess[uid]
+		name := ""
+		chatID, msgID := int64(0), 0
+		if s != nil {
+			name = s.PendingName
+			chatID, msgID = s.ChatID, s.MsgID
+		}
+		plMu.Unlock()
+		_, _ = cb.Answer("")
+		editPlaylistPanel(chatID, msgID, playlistDeleteProgress(), nil)
+		ok := removePlaylistSong(uid, name)
+		plMu.Lock()
+		if s := plSess[uid]; s != nil {
+			s.Deleting = false
+			s.PendingName = ""
+			s.Waiting = true
+		}
+		plMu.Unlock()
+		caption := playlistMainCaption(uid)
+		if !ok {
+			caption = "<blockquote><b>" + smallcaps("song not in playlist") + "</b></blockquote>\n" + playlistPrompt()
+		}
+		editPlaylistPanel(chatID, msgID, caption, playlistMarkup(uid))
 		return true
 	case strings.HasPrefix(data, "pl_a:") || strings.HasPrefix(data, "pl_v:"):
 		video := strings.HasPrefix(data, "pl_v:")
@@ -193,13 +333,13 @@ func handlePlaylistCallback(cb *telegram.CallbackQuery, data string) bool {
 		idxStr = strings.TrimPrefix(idxStr, "pl_v:")
 		idx := 0
 		fmt.Sscanf(idxStr, "%d", &idx)
-		chatID := playlistChatID(cb)
-		if chatID >= 0 {
+		if playlistIsPrivate(cb) {
 			_, _ = cb.Answer(smallcaps("play playlist in group"), alert)
 			return true
 		}
+		chatID := playlistChatID(cb)
 		plMu.Lock()
-		items := userPL[cb.Sender.ID]
+		items := userPL[uid]
 		plMu.Unlock()
 		if idx < 0 || idx >= len(items) {
 			_, _ = cb.Answer(smallcaps("song missing"), alert)
@@ -212,7 +352,7 @@ func handlePlaylistCallback(cb *telegram.CallbackQuery, data string) bool {
 			Title:       it.Title,
 			Duration:    it.Dur,
 			Requester:   name,
-			RequesterID: cb.Sender.ID,
+			RequesterID: uid,
 			Thumbnail:   it.Thumb,
 			Video:       video,
 		}
