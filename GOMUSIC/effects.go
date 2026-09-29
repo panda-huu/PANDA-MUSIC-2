@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type effectState struct {
@@ -64,6 +65,9 @@ func setEffectsEnabled(chatID int64, val bool) {
 }
 
 func setSeekState(chatID int64, sec int) {
+	if sec < 0 {
+		sec = 0
+	}
 	fxMu.Lock()
 	seekPos[chatID] = sec
 	fxMu.Unlock()
@@ -73,6 +77,33 @@ func getSeekState(chatID int64) int {
 	fxMu.Lock()
 	defer fxMu.Unlock()
 	return seekPos[chatID]
+}
+
+func currentPlaybackSec(chatID int64) int {
+	base := getSeekState(chatID)
+	connectMu.Lock()
+	started := streamAt[chatID]
+	connectMu.Unlock()
+	if !started.IsZero() {
+		base += int(time.Since(started).Seconds())
+	}
+	if base < 0 {
+		return 0
+	}
+	return base
+}
+
+func nextSeekSec(chatID int64, deltaSec int) int {
+	next := currentPlaybackSec(chatID) + deltaSec
+	if next < 0 {
+		next = 0
+	}
+	if s := peekCurrent(chatID); s != nil {
+		if dur := parseDur(s.Duration); dur > 3 && next > dur-2 {
+			next = dur - 2
+		}
+	}
+	return next
 }
 
 func maybeApplyEffects(chatID int64, path string) (string, error) {
