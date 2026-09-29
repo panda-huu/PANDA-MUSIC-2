@@ -62,6 +62,9 @@ func handleCallbackQuery(cb *telegram.CallbackQuery) error {
 		return nil
 	}
 	data := string(cb.Data)
+	if handlePlaylistCallback(cb, data) {
+		return nil
+	}
 	msg, _ := cb.GetMessage()
 	chatID := callbackChatID(cb, msg)
 	alert := &telegram.CallbackOptions{Alert: true}
