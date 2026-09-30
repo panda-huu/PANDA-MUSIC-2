@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/amarnathcjd/gogram/telegram"
 )
@@ -32,7 +33,8 @@ type welSession struct {
 
 var (
 	welcomeStore sync.Map
-	welSess     sync.Map
+	welSess      sync.Map
+	welOnce      sync.Map
 	reWelcomeBtn = regexp.MustCompile(`(?i)\[([^\]]+)\]\(buttonurl://([^)]+)\)`)
 )
 
@@ -416,6 +418,13 @@ func welcomeUserJoin(chatID, uid int64, name, uname string) {
 	if uid == 0 || uid == botSelfID() {
 		return
 	}
+	key := fmt.Sprintf("%d:%d", canonChatID(chatID), uid)
+	if v, ok := welOnce.Load(key); ok {
+		if t, ok := v.(time.Time); ok && time.Since(t) < 20*time.Second {
+			return
+		}
+	}
+	welOnce.Store(key, time.Now())
 	go sendWelcome(chatID, uid, name, uname)
 }
 
