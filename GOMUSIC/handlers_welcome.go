@@ -19,10 +19,12 @@ type welcomeBtn struct {
 }
 
 type welcomeCfg struct {
-	On      bool
-	Text    string
-	Photo   string
-	Buttons []welcomeBtn
+	On        bool
+	Text      string
+	Photo     string
+	MediaKind string
+	Custom    bool
+	Buttons   []welcomeBtn
 }
 
 type welSession struct {
@@ -33,6 +35,7 @@ type welSession struct {
 
 var (
 	welcomeStore sync.Map
+	welcomeMedia sync.Map
 	welSess      sync.Map
 	welOnce      sync.Map
 	reWelcomeBtn = regexp.MustCompile(`(?i)\[([^\]]+)\]\(buttonurl://([^)]+)\)`)
@@ -61,7 +64,7 @@ func defaultWelcomeText() string {
 }
 
 func defaultWelcomeCfg() welcomeCfg {
-	return welcomeCfg{On: true, Text: defaultWelcomeText(), Buttons: defaultWelcomeButtons()}
+	return welcomeCfg{On: true, Custom: false, Text: defaultWelcomeText(), Buttons: defaultWelcomeButtons()}
 }
 
 func welcomeLookupIDs(chatID int64) []int64 {
@@ -81,8 +84,11 @@ func welcomeOf(chatID int64) welcomeCfg {
 	for _, id := range welcomeLookupIDs(chatID) {
 		if v, ok := welcomeStore.Load(id); ok {
 			if c, ok := v.(welcomeCfg); ok {
-				if strings.TrimSpace(c.Text) == "" {
+				if strings.TrimSpace(c.Text) == "" && c.Photo == "" && c.MediaKind == "" {
 					c.Text = defaultWelcomeText()
+				}
+				if !c.Custom && len(c.Buttons) == 0 {
+					c.Buttons = defaultWelcomeButtons()
 				}
 				return c
 			}
@@ -92,12 +98,56 @@ func welcomeOf(chatID int64) welcomeCfg {
 }
 
 func saveWelcome(chatID int64, cfg welcomeCfg) {
-	if strings.TrimSpace(cfg.Text) == "" {
+	if strings.TrimSpace(cfg.Text) == "" && cfg.Photo == "" && cfg.MediaKind == "" {
 		cfg.Text = defaultWelcomeText()
 	}
 	for _, id := range welcomeLookupIDs(chatID) {
 		welcomeStore.Store(id, cfg)
 	}
+}
+
+func storeWelcomeMedia(chatID int64, media any) {
+	if media == nil {
+		for _, id := range welcomeLookupIDs(chatID) {
+			welcomeMedia.Delete(id)
+		}
+		return
+	}
+	for _, id := range welcomeLookupIDs(chatID) {
+		welcomeMedia.Store(id, media)
+	}
+}
+
+func loadWelcomeMedia(chatID int64) any {
+	for _, id := range welcomeLookupIDs(chatID) {
+		if v, ok := welcomeMedia.Load(id); ok && v != nil {
+			return v
+		}
+	}
+	return nil
+}
+
+func welcomeMediaFromMsg(m *telegram.NewMessage) (kind string, media any) {
+	if m == nil || !m.IsMedia() {
+		return "", nil
+	}
+	kind = strings.ToLower(strings.TrimSpace(m.MediaType()))
+	switch kind {
+	case "photo", "video", "animation", "gif", "document":
+	default:
+		kind = "photo"
+	}
+	return kind, m.Media()
+}
+
+func welcomeCaptionOf(m *telegram.NewMessage) string {
+	if m == nil {
+		return ""
+	}
+	if t := strings.TrimSpace(m.Text()); t != "" {
+		return t
+	}
+	return ""
 }
 
 func welcomePanelCaption(chatID int64) string {
@@ -106,11 +156,24 @@ func welcomePanelCaption(chatID int64) string {
 	if cfg.On {
 		st = smallcaps("on")
 	}
+	media := smallcaps("none")
+	switch {
+	case cfg.MediaKind != "":
+		media = smallcaps(cfg.MediaKind)
+	case cfg.Photo != "":
+		media = smallcaps("image")
+	}
+	style := smallcaps("default")
+	if cfg.Custom {
+		style = smallcaps("custom")
+	}
 	return "<blockquote><b>" + smallcaps("welcome settings") + "</b></blockquote>\n" +
 		"<blockquote expandable>" + smallcaps("status") + " : <b>" + st + "</b>\n" +
+		smallcaps("style") + " : <b>" + style + "</b>\n" +
+		smallcaps("media") + " : <b>" + media + "</b>\n" +
 		smallcaps("buttons") + " : <code>" + fmt.Sprintf("%d", len(cfg.Buttons)) + "</code>\n\n" +
 		smallcaps("placeholders") + " : {mention} {name} {username} {id} {chat}\n" +
-		smallcaps("button format") + " : Name | https://t.me/xxx</blockquote>"
+		smallcaps("set text") + " : " + smallcaps("text or photo video with caption") + "</blockquote>"
 }
 
 func welcomePanelMarkup(chatID int64) [][]InlineBtn {
@@ -170,7 +233,7 @@ func parseWelcomeButtons(text string) (string, []welcomeBtn) {
 
 func fillWelcome(tpl string, uid int64, name, uname, chat string) string {
 	if strings.TrimSpace(tpl) == "" {
-		tpl = defaultWelcomeText()
+		tpl = "{mention}"
 	}
 	repl := map[string]string{
 		"{mention}":  mentionHTML(uid, name),
@@ -198,12 +261,24 @@ func sendWelcome(chatID int64, uid int64, name, uname string) {
 	name, uname = userFromCache(uid, name, uname)
 	body := fillWelcome(cfg.Text, uid, name, uname, chatTitleOf(chatID))
 	rows := welcomeJoinMarkup(cfg)
-	if cfg.Photo != "" {
-		body = richImg(cfg.Photo) + body
-	}
 	mk := gogramMarkup(rows)
+	ents, plain := captionEntities(telegramHTML(body))
+	opts := &telegram.MediaOptions{Caption: plain, ParseMode: "", Entities: ents, ReplyMarkup: mk}
+	media := loadWelcomeMedia(chatID)
 	for _, id := range welcomeLookupIDs(chatID) {
-		if _, err := sendHTML(Bot, id, body, mk); err == nil {
+		if media != nil {
+			if _, err := Bot.SendMedia(id, media, opts); err == nil {
+				log.Println("welcome media sent chat", id, "user", uid, cfg.MediaKind)
+				return
+			} else {
+				log.Println("welcome media fail", id, err)
+			}
+		}
+		sendBody := body
+		if cfg.Photo != "" {
+			sendBody = richImg(cfg.Photo) + body
+		}
+		if _, err := sendHTML(Bot, id, sendBody, mk); err == nil {
 			log.Println("welcome sent chat", id, "user", uid)
 			return
 		} else {
@@ -235,6 +310,25 @@ func showWelcomePanel(chatID int64) {
 			return
 		}
 	}
+}
+
+func applyCustomWelcome(chatID int64, text string, kind string, media any) {
+	clean, btns := parseWelcomeButtons(text)
+	cfg := welcomeOf(chatID)
+	cfg.Custom = true
+	cfg.On = true
+	cfg.Buttons = btns
+	if clean != "" {
+		cfg.Text = clean
+	} else if kind != "" {
+		cfg.Text = "{mention}"
+	}
+	if kind != "" && media != nil {
+		cfg.MediaKind = kind
+		cfg.Photo = ""
+		storeWelcomeMedia(chatID, media)
+	}
+	saveWelcome(chatID, cfg)
 }
 
 func handleWelcome(m *telegram.NewMessage) error {
@@ -277,19 +371,13 @@ func handleSetWelcome(m *telegram.NewMessage) error {
 		chatID = canonChatID(id)
 	}
 	text := strings.TrimSpace(cmdArgs(m))
+	kind, media := welcomeMediaFromMsg(m)
 	_, _ = m.Delete()
-	if text == "" {
-		_, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("send")+" /setwelcome welcome {mention}"), nil)
+	if text == "" && kind == "" {
+		_, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("send text or photo video with caption")), nil)
 		return nil
 	}
-	clean, btns := parseWelcomeButtons(text)
-	cfg := welcomeOf(chatID)
-	cfg.Text = clean
-	if len(btns) > 0 {
-		cfg.Buttons = btns
-	}
-	cfg.On = true
-	saveWelcome(chatID, cfg)
+	applyCustomWelcome(chatID, text, kind, media)
 	showWelcomePanel(chatID)
 	return nil
 }
@@ -302,6 +390,7 @@ func handleResetWelcome(m *telegram.NewMessage) error {
 		return nil
 	}
 	chatID := canonChatID(m.ChatID())
+	storeWelcomeMedia(chatID, nil)
 	saveWelcome(chatID, defaultWelcomeCfg())
 	_, _ = m.Delete()
 	showWelcomePanel(chatID)
@@ -310,10 +399,6 @@ func handleResetWelcome(m *telegram.NewMessage) error {
 
 func handleWelcomeListen(m *telegram.NewMessage) error {
 	if m == nil || blocked(m) || m.IsPrivate() {
-		return nil
-	}
-	text := strings.TrimSpace(m.Text())
-	if text == "" || strings.HasPrefix(text, "/") {
 		return nil
 	}
 	uid := userIDOf(m)
@@ -329,30 +414,34 @@ func handleWelcomeListen(m *telegram.NewMessage) error {
 	if sess == nil || !samePlaylistChat(sess.ChatID, inChat) {
 		return nil
 	}
+	text := welcomeCaptionOf(m)
+	if strings.HasPrefix(text, "/") {
+		return nil
+	}
+	kind, media := welcomeMediaFromMsg(m)
+	if text == "" && kind == "" {
+		return nil
+	}
 	_, _ = m.Delete()
-	cfg := welcomeOf(sess.ChatID)
 	switch sess.Mode {
 	case "set":
-		clean, btns := parseWelcomeButtons(text)
-		cfg.Text = clean
-		if len(btns) > 0 {
-			cfg.Buttons = btns
-		}
-		cfg.On = true
+		applyCustomWelcome(sess.ChatID, text, kind, media)
 	case "btn":
 		parts := strings.SplitN(text, "|", 3)
 		if len(parts) < 2 {
 			editPlaylistPanel(sess.ChatID, sess.MsgID, wrapBQ(smallcaps("use")+" Name | https://t.me/xxx"), welcomePanelMarkup(sess.ChatID))
 			return nil
 		}
+		cfg := welcomeOf(sess.ChatID)
+		cfg.Custom = true
 		colors := []string{ColourRed, ColourBlue, ColourGreen}
 		cfg.Buttons = append(cfg.Buttons, welcomeBtn{
 			Text: strings.TrimSpace(parts[0]), URL: strings.TrimSpace(parts[1]),
 			Same: len(parts) > 2 && strings.Contains(strings.ToLower(parts[2]), "same"),
 			Colour: colors[len(cfg.Buttons)%3],
 		})
+		saveWelcome(sess.ChatID, cfg)
 	}
-	saveWelcome(sess.ChatID, cfg)
 	welSess.Delete(uid)
 	editPlaylistPanel(sess.ChatID, sess.MsgID, welcomePanelCaption(sess.ChatID), welcomePanelMarkup(sess.ChatID))
 	return nil
@@ -379,6 +468,7 @@ func handleWelcomeCallback(cb *telegram.CallbackQuery, data string) bool {
 		saveWelcome(chatID, cfg)
 		_, _ = cb.Answer(smallcaps("disabled"))
 	case "wel_reset":
+		storeWelcomeMedia(chatID, nil)
 		saveWelcome(chatID, defaultWelcomeCfg())
 		_, _ = cb.Answer(smallcaps("reset"))
 	case "wel_test":
@@ -394,7 +484,7 @@ func handleWelcomeCallback(cb *telegram.CallbackQuery, data string) bool {
 	case "wel_set":
 		welSess.Store(cb.Sender.ID, &welSession{ChatID: chatID, MsgID: int(cb.MessageID), Mode: "set"})
 		_, _ = cb.Answer("")
-		_ = editQuotedCaption(cb, wrapBQ(smallcaps("send welcome text now")), welcomePanelMarkup(chatID))
+		_ = editQuotedCaption(cb, wrapBQ(smallcaps("send text or photo video with caption")), welcomePanelMarkup(chatID))
 		return true
 	case "wel_btn":
 		welSess.Store(cb.Sender.ID, &welSession{ChatID: chatID, MsgID: int(cb.MessageID), Mode: "btn"})
