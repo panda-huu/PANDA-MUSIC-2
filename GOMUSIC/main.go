@@ -63,6 +63,7 @@ func main() {
 	}
 
 	registerHandlers()
+	registerVoiceChatHandlers()
 	registerCallbackFallback()
 	go warmLogger()
 	log.Println("draining old telegram updates for 8s")
