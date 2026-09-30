@@ -15,6 +15,17 @@ var (
 	vcActive sync.Map
 )
 
+func registerVoiceChatHandlers() {
+	if Bot == nil {
+		return
+	}
+	Bot.On(telegram.OnAction, func(m *telegram.NewMessage) error {
+		handleVoiceChatService(m)
+		return nil
+	})
+	Bot.AddRawHandler(&telegram.UpdateGroupCall{}, handleRawGroupCall)
+}
+
 func vcDedupe(key string) bool {
 	if v, ok := vcOnce.Load(key); ok {
 		if t, ok := v.(time.Time); ok && time.Since(t) < 8*time.Second {
@@ -160,18 +171,17 @@ func handleRawGroupCall(u telegram.Update, c *telegram.Client) error {
 		announceVCEnded(chatID)
 		return nil
 	}
-	s := fmt.Sprintf("%v", upd.Call)
-	id := int64(0)
-	fmt.Sscanf(s, "%d", &id)
-	if strings.Contains(strings.ToLower(fmt.Sprintf("%T", upd.Call)), "discard") {
+	kind := strings.ToLower(fmt.Sprintf("%T", upd.Call))
+	if strings.Contains(kind, "discard") {
 		announceVCEnded(chatID)
 		return nil
 	}
-	if id != 0 && chatID != 0 {
-		if _, exists := vcActive.Load(id); exists {
-			return nil
-		}
-		vcActive.Store(id, chatID)
+	key := fmt.Sprintf("raw:%d:%v", chatID, upd.Call)
+	if vcDedupe(key) {
+		return nil
+	}
+	if chatID != 0 {
+		vcActive.Store(chatID, chatID)
 	}
 	announceVCStarted(chatID)
 	return nil
