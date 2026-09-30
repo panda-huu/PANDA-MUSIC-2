@@ -23,9 +23,9 @@ type cachedUser struct {
 }
 
 var (
-	memLogOnce  sync.Map
-	groupCache  sync.Map
-	userCache   sync.Map
+	memLogOnce sync.Map
+	groupCache sync.Map
+	userCache  sync.Map
 )
 
 func canonChatID(id int64) int64 {
@@ -285,7 +285,7 @@ func handleParticipant(p *telegram.ParticipantUpdate) error {
 		return nil
 	}
 	self := botSelfID()
-	if self == 0 || p.User.ID != self {
+	if self != 0 && p.User.ID != self {
 		return nil
 	}
 	added := p.IsAdded() || p.IsJoined()
@@ -312,7 +312,11 @@ func handleParticipant(p *telegram.ParticipantUpdate) error {
 }
 
 func handleServiceMessage(m *telegram.NewMessage) error {
-	if m == nil || m.IsPrivate() || !m.IsService() || m.Action == nil {
+	if m == nil || m.IsPrivate() {
+		return nil
+	}
+	welcomeFromService(m)
+	if !m.IsService() || m.Action == nil {
 		return nil
 	}
 	self := botSelfID()
@@ -350,6 +354,7 @@ func handleRawChannelParticipant(u telegram.Update, c *telegram.Client) error {
 	if !ok || upd == nil {
 		return nil
 	}
+	welcomeFromRaw(upd)
 	self := botSelfID()
 	if self == 0 || upd.UserID != self {
 		return nil
