@@ -32,30 +32,31 @@ func sendGroupNotice(chatID int64, html string) {
 	for _, id := range welcomeLookupIDs(chatID) {
 		if _, err := sendHTML(Bot, id, html, nil); err == nil {
 			return
-		} else {
-			log.Println("vc notice fail", id, err)
 		}
+		log.Println("vc notice fail", id, err)
 	}
 }
 
 func announceVCStarted(chatID int64) {
 	chatID = canonChatID(chatID)
-	key := fmt.Sprintf("start:%d", chatID)
-	if vcDedupe(key) {
+	if chatID == 0 {
 		return
 	}
-	body := "<blockquote><b>" + smallcaps("voice chat started") + " 🍃</b></blockquote>"
-	sendGroupNotice(chatID, body)
+	if vcDedupe(fmt.Sprintf("start:%d", chatID)) {
+		return
+	}
+	sendGroupNotice(chatID, "<blockquote><b>"+smallcaps("voice chat started")+" 🍃</b></blockquote>")
 }
 
 func announceVCEnded(chatID int64) {
 	chatID = canonChatID(chatID)
-	key := fmt.Sprintf("end:%d", chatID)
-	if vcDedupe(key) {
+	if chatID == 0 {
 		return
 	}
-	body := "<blockquote><b>" + smallcaps("voice chat ended.") + "🍃</b></blockquote>"
-	sendGroupNotice(chatID, body)
+	if vcDedupe(fmt.Sprintf("end:%d", chatID)) {
+		return
+	}
+	sendGroupNotice(chatID, "<blockquote><b>"+smallcaps("voice chat ended.")+"🍃</b></blockquote>")
 }
 
 func userMentionByID(uid int64) string {
@@ -65,8 +66,7 @@ func userMentionByID(uid int64) string {
 	name, _ := userFromCache(uid, "User", "-")
 	if Bot != nil {
 		if u, err := Bot.GetUser(uid); err == nil && u != nil {
-			n, _, _ := userBits(u)
-			if n != "" {
+			if n, _, _ := userBits(u); n != "" {
 				name = n
 			}
 		}
@@ -76,28 +76,25 @@ func userMentionByID(uid int64) string {
 
 func announceVCInvite(chatID, byID int64, toIDs []int64) {
 	chatID = canonChatID(chatID)
-	if byID == 0 || len(toIDs) == 0 {
+	if chatID == 0 || byID == 0 || len(toIDs) == 0 {
 		return
 	}
-	key := fmt.Sprintf("inv:%d:%d:%v", chatID, byID, toIDs)
-	if vcDedupe(key) {
+	if vcDedupe(fmt.Sprintf("inv:%d:%d:%v", chatID, byID, toIDs)) {
 		return
 	}
 	var invited []string
 	for _, id := range toIDs {
-		if id == 0 {
-			continue
+		if id != 0 {
+			invited = append(invited, userMentionByID(id))
 		}
-		invited = append(invited, userMentionByID(id))
 	}
 	if len(invited) == 0 {
 		return
 	}
-	body := "<blockquote>" +
-		smallcaps("invited by") + ": " + userMentionByID(byID) + " 🍃\n" +
-		smallcaps("invited to") + " " + strings.Join(invited, ", ") + " 🍃" +
-		"</blockquote>"
-	sendGroupNotice(chatID, body)
+	sendGroupNotice(chatID, "<blockquote>"+
+		smallcaps("invited by")+": "+userMentionByID(byID)+" 🍃\n"+
+		smallcaps("invited to")+" "+strings.Join(invited, ", ")+" 🍃"+
+		"</blockquote>")
 }
 
 func handleVoiceChatService(m *telegram.NewMessage) {
@@ -118,12 +115,12 @@ func handleVoiceChatService(m *telegram.NewMessage) {
 	case *telegram.MessageActionInviteToGroupCall:
 		announceVCInvite(chatID, userIDOf(m), a.Users)
 	default:
-		kind := strings.ToLower(fmt.Sprintf("%T", m.Action))
+		kind := strings.ToLower(fmt.Sprintf("%T %v", m.Action, m.Action))
 		if strings.Contains(kind, "invitetogroupcall") {
-			announceVCInvite(chatID, userIDOf(m), nil)
-		} else if strings.Contains(kind, "groupcall") && !strings.Contains(kind, "scheduled") {
-			s := strings.ToLower(fmt.Sprintf("%v", m.Action))
-			if strings.Contains(s, "duration") && !strings.Contains(s, "duration:0") {
+			return
+		}
+		if strings.Contains(kind, "groupcall") && !strings.Contains(kind, "scheduled") {
+			if strings.Contains(kind, "duration") && !strings.Contains(kind, "duration:0") {
 				announceVCEnded(chatID)
 			} else {
 				announceVCStarted(chatID)
@@ -151,30 +148,31 @@ func handleRawGroupCall(u telegram.Update, c *telegram.Client) error {
 		return nil
 	}
 	chatID := peerToChatID(upd.Peer)
-	switch call := upd.Call.(type) {
-	case *telegram.GroupCallDiscarded:
+	if discarded, ok := upd.Call.(*telegram.GroupCallDiscarded); ok && discarded != nil {
 		if chatID == 0 {
-			if v, ok := vcActive.Load(call.ID); ok {
+			if v, ok := vcActive.Load(discarded.ID); ok {
 				if id, ok := v.(int64); ok {
 					chatID = id
 				}
 			}
 		}
-		vcActive.Delete(call.ID)
+		vcActive.Delete(discarded.ID)
 		announceVCEnded(chatID)
-	default:
-		id := int64(0)
-		if gc, ok := upd.Call.(*telegram.GroupCall);
-		ok && gc != nil {
-			id = gc.ID
-		}
-		if id != 0 && chatID != 0 {
-			if _, exists := vcActive.Load(id); exists {
-				return nil
-			}
-			vcActive.Store(id, chatID)
-		}
-		announceVCStarted(chatID)
+		return nil
 	}
+	s := fmt.Sprintf("%v", upd.Call)
+	id := int64(0)
+	fmt.Sscanf(s, "%d", &id)
+	if strings.Contains(strings.ToLower(fmt.Sprintf("%T", upd.Call)), "discard") {
+		announceVCEnded(chatID)
+		return nil
+	}
+	if id != 0 && chatID != 0 {
+		if _, exists := vcActive.Load(id); exists {
+			return nil
+		}
+		vcActive.Store(id, chatID)
+	}
+	announceVCStarted(chatID)
 	return nil
 }
