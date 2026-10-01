@@ -276,6 +276,9 @@ func resolveStream(raw string, video bool) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("download API: %v", err)
 	}
+	if isHTTP(path) {
+		return path, nil
+	}
 	if video && !fileHasVideo(path) {
 		_ = os.Remove(path)
 		return "", fmt.Errorf("API gave audio file, not video stream")
@@ -293,14 +296,44 @@ func downloadViaAPI(videoID, typ, dest string) (string, error) {
 		key = "PANDA-KEY"
 	}
 	full := "https://www.youtube.com/watch?v=" + videoID
-	client := &http.Client{Timeout: 15 * time.Minute}
-	u, _ := url.Parse(api + "/download")
+	client := &http.Client{Timeout: 45 * time.Second}
+
+	// Prefer ARU-YT-V3's direct resolver. It returns the YouTube media URL
+	// instead of downloading the complete song first.
+	u, _ := url.Parse(api + "/direct")
 	q := u.Query()
 	q.Set("url", full)
 	q.Set("type", typ)
 	q.Set("api_key", key)
+	if typ == "video" {
+		q.Set("quality", "360")
+	} else {
+		q.Set("format", "m4a")
+	}
 	u.RawQuery = q.Encode()
+
 	resp, err := client.Get(u.String())
+	if err == nil {
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 32*1024))
+		resp.Body.Close()
+		if readErr == nil && resp.StatusCode == 200 {
+			mediaURL := strings.TrimSpace(string(body))
+			if isHTTP(mediaURL) {
+				return mediaURL, nil
+			}
+		}
+	}
+
+	// Fallback: keep the existing full-download API path.
+	u, _ = url.Parse(api + "/download")
+	q = u.Query()
+	q.Set("url", full)
+	q.Set("type", typ)
+	q.Set("api_key", key)
+	u.RawQuery = q.Encode()
+
+	client = &http.Client{Timeout: 15 * time.Minute}
+	resp, err = client.Get(u.String())
 	if err != nil {
 		return "", err
 	}
@@ -331,7 +364,6 @@ func downloadViaAPI(videoID, typ, dest string) (string, error) {
 	}
 	return dest, nil
 }
-
 func deleteFile(path string) {
 	if path != "" && !isHTTP(path) {
 		_ = os.Remove(path)
