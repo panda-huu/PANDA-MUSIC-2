@@ -61,7 +61,7 @@ func playableMessage(m *telegram.NewMessage) bool {
 	if m.Audio() != nil || m.Video() != nil || m.Voice() != nil || m.Document() != nil {
 		return true
 	}
-	if f := m.File(); f != nil && strings.TrimSpace(f.Name) != "" {
+	if m.File != nil && strings.TrimSpace(m.File.Name) != "" {
 		return true
 	}
 	mt := strings.ToLower(m.MediaType())
@@ -139,8 +139,8 @@ func songFromReply(m *telegram.NewMessage, video bool) (*Song, string) {
 	if wantVideo {
 		name = "video.mp4"
 	}
-	if f := target.File(); f != nil && strings.TrimSpace(f.Name) != "" {
-		name = safeMediaName(f.Name)
+	if target.File != nil && strings.TrimSpace(target.File.Name) != "" {
+		name = safeMediaName(target.File.Name)
 		if title == "" || title == "audio" || title == "video" || title == "voice" {
 			title = strings.TrimSuffix(name, filepath.Ext(name))
 		}
@@ -187,8 +187,8 @@ func replyMediaKind(reply *telegram.NewMessage) (kind, title string) {
 		return "", ""
 	}
 	dump := strings.ToLower(reply.MediaType() + " " + fmt.Sprintf("%v", reply.Media()))
-	if f := reply.File(); f != nil {
-		dump += " " + strings.ToLower(f.Name)
+	if reply.File != nil {
+		dump += " " + strings.ToLower(reply.File.Name)
 	}
 	if media, ok := reply.Media().(*telegram.MessageMediaDocument); ok && media != nil {
 		doc := asDocument(media.Document)
@@ -265,10 +265,8 @@ func asDocument(doc telegram.Document) *telegram.DocumentObj {
 }
 
 func mediaTitle(reply *telegram.NewMessage, doc *telegram.DocumentObj, fallback string) string {
-	if reply != nil {
-		if f := reply.File(); f != nil && strings.TrimSpace(f.Name) != "" {
-			return strings.TrimSuffix(strings.TrimSpace(f.Name), filepath.Ext(f.Name))
-		}
+	if reply != nil && reply.File != nil && strings.TrimSpace(reply.File.Name) != "" {
+		return strings.TrimSuffix(strings.TrimSpace(reply.File.Name), filepath.Ext(reply.File.Name))
 	}
 	if doc != nil {
 		for _, attr := range doc.Attributes {

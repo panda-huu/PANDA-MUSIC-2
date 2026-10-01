@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 	"sync"
@@ -525,9 +524,6 @@ func welcomeFromService(m *telegram.NewMessage) {
 		return
 	}
 	action := m.Action
-	if action == nil && m.Message != nil {
-		action = m.Message.Action
-	}
 	if action == nil {
 		return
 	}

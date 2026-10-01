@@ -181,9 +181,6 @@ func handleVoiceChatService(m *telegram.NewMessage) {
 		return
 	}
 	action := m.Action
-	if action == nil && m.Message != nil {
-		action = m.Message.Action
-	}
 	kind := strings.ToLower(serviceBlob(m))
 	if action == nil && !strings.Contains(kind, "video chat") && !strings.Contains(kind, "voice chat") && !strings.Contains(kind, "groupcall") {
 		return
@@ -233,9 +230,6 @@ func serviceBlob(m *telegram.NewMessage) string {
 	parts := []string{m.Text()}
 	if m.Action != nil {
 		parts = append(parts, fmt.Sprintf("%T %v", m.Action, m.Action))
-	}
-	if m.Message != nil && m.Message.Action != nil {
-		parts = append(parts, fmt.Sprintf("%T %v", m.Message.Action, m.Message.Action))
 	}
 	return strings.ToLower(strings.Join(parts, " "))
 }
