@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/amarnathcjd/gogram/telegram"
@@ -84,9 +85,28 @@ func processPlayCommand(m *telegram.NewMessage, video bool) error {
 	return processPlay(m, query, video)
 }
 
+type playSearch struct {
+	url, title, dur, thumb string
+	playlist               []ytItem
+	err                    error
+}
+
+var promotedChats sync.Map
+
 func processPlay(m *telegram.NewMessage, query string, video bool) error {
 	chatID := m.ChatID()
 	already := isBusy(chatID)
+	if strings.Contains(query, "youtu.be/") {
+		if parts := strings.Split(query, "youtu.be/"); len(parts) > 1 {
+			id := strings.Split(strings.Split(parts[1], "?")[0], "&")[0]
+			query = "https://www.youtube.com/watch?v=" + id
+		}
+	}
+	searchCh := make(chan playSearch, 1)
+	go func() {
+		urlStr, title, durISO, thumb, playlist, err := searchSmart(query)
+		searchCh <- playSearch{urlStr, title, durISO, thumb, playlist, err}
+	}()
 	var pm *telegram.NewMessage
 	if already {
 		pm, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("adding to queue...")), nil)
@@ -103,19 +123,14 @@ func processPlay(m *telegram.NewMessage, query string, video bool) error {
 				return nil
 			}
 		}
-		_ = promoteAssistant(chatID)
+		go warmPlay(chatID)
 	}
-	if strings.Contains(query, "youtu.be/") {
-		if parts := strings.Split(query, "youtu.be/"); len(parts) > 1 {
-			id := strings.Split(strings.Split(parts[1], "?")[0], "&")[0]
-			query = "https://www.youtube.com/watch?v=" + id
-		}
-	}
-	urlStr, title, durISO, thumb, playlist, err := searchSmart(query)
-	if err != nil {
-		_ = editHTML(pm, wrapBQ(smallcaps("search failed")+"\n<code>"+richEsc(err.Error())+"</code>"), nil)
+	found := <-searchCh
+	if found.err != nil {
+		_ = editHTML(pm, wrapBQ(smallcaps("search failed")+"\n<code>"+richEsc(found.err.Error())+"</code>"), nil)
 		return nil
 	}
+	urlStr, title, durISO, thumb, playlist := found.url, found.title, found.dur, found.thumb, found.playlist
 	if urlStr == "" && len(playlist) == 0 {
 		_ = editHTML(pm, wrapBQ(smallcaps("song not found")), nil)
 		return nil
@@ -274,7 +289,23 @@ func exportInviteLink(chatID int64) (string, error) {
 	return "", last
 }
 
+func warmPlay(chatID int64) {
+	_ = promoteAssistant(chatID)
+	_ = ensureVC(chatID)
+}
+
 func promoteAssistant(chatID int64) error {
+	if _, ok := promotedChats.Load(chatID); ok {
+		return nil
+	}
+	if err := promoteAssistantNow(chatID); err != nil {
+		return err
+	}
+	promotedChats.Store(chatID, true)
+	return nil
+}
+
+func promoteAssistantNow(chatID int64) error {
 	user, err := assistantInput()
 	if err != nil {
 		return err
@@ -304,7 +335,7 @@ func promoteAssistant(chatID int64) error {
 			}
 		}
 	}
-	return nil
+	return fmt.Errorf("promote failed")
 }
 
 func inviteAssistantViaBot(chatID int64) error {
@@ -347,7 +378,7 @@ func tryJoinAssistant(chatID int64, pm *telegram.NewMessage) bool {
 
 	inviteErr := withFloodWait(func() error { return inviteAssistantViaBot(chatID) })
 	if inviteErr == nil {
-		time.Sleep(800 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 		_ = promoteAssistant(chatID)
 		return true
 	}
@@ -366,14 +397,14 @@ func tryJoinAssistant(chatID int64, pm *telegram.NewMessage) bool {
 			})
 		}
 		if joinErr == nil {
-			time.Sleep(800 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 			_ = promoteAssistant(chatID)
 			return true
 		}
 		inviteErr = joinErr
 	}
 
-	time.Sleep(1200 * time.Millisecond)
+	time.Sleep(250 * time.Millisecond)
 	if ok, _ := assistantIn(chatID); ok {
 		_ = promoteAssistant(chatID)
 		return true

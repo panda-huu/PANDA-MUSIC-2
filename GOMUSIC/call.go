@@ -200,7 +200,7 @@ func ensureVC(chatID int64) error {
 		}
 		return err
 	}
-	time.Sleep(1500 * time.Millisecond)
+	time.Sleep(350 * time.Millisecond)
 	return nil
 }
 
@@ -449,4 +449,21 @@ func joinExistingCall(chatID int64, media ntgcalls.MediaDescription, video bool)
 		last = fmt.Errorf("join call failed")
 	}
 	return last
+}
+
+var cachedAssistant *telegram.UserObj
+
+func assistantSelf() (*telegram.UserObj, error) {
+	if cachedAssistant != nil {
+		return cachedAssistant, nil
+	}
+	if Assistant == nil {
+		return nil, fmt.Errorf("assistant not ready")
+	}
+	me, err := Assistant.GetMe()
+	if err != nil {
+		return nil, err
+	}
+	cachedAssistant = me
+	return me, nil
 }
