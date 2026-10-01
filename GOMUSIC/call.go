@@ -461,13 +461,12 @@ func assistantSelf() (*telegram.UserObj, error) {
 	if Assistant == nil {
 		return nil, fmt.Errorf("assistant not ready")
 	}
-	raw, err := Assistant.GetMe()
+	me, err := Assistant.GetMe()
 	if err != nil {
 		return nil, err
 	}
-	me, ok := raw.(*telegram.UserObj)
-	if !ok {
-		return nil, fmt.Errorf("unexpected GetMe type %T", raw)
+	if me == nil {
+		return nil, fmt.Errorf("assistant GetMe returned nil")
 	}
 	cachedAssistant = me
 	return cachedAssistant, nil
@@ -481,6 +480,6 @@ func holdMedia() ntgcalls.MediaDescription {
 		MediaSource:  ntgcalls.MediaSourceShell,
 		SampleRate:   48000,
 		ChannelCount: 2,
-		Input:        "ffmpeg -f lavfi -i anullsrc=r=48000:cl=stereo -t 30 -f s16le -ac 2 -ar 48000 -v quiet pipe:1",
+		Input:        "ffmpeg -nostdin -hide_banner -re -threads 1 -f lavfi -i anullsrc=r=48000:cl=stereo -t 30 -f s16le -ac 2 -ar 48000 -v quiet pipe:1",
 	}}
 }

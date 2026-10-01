@@ -17,9 +17,9 @@ func isHTTP(src string) bool {
 
 func ffmpegPreFlags(src string) string {
 	if !isHTTP(src) {
-		return "-nostdin -hide_banner -fflags +genpts+discardcorrupt -err_detect ignore_err "
+		return "-nostdin -hide_banner -re -threads 1 -filter_threads 1 -filter_complex_threads 1 -fflags +genpts+discardcorrupt -err_detect ignore_err "
 	}
-	return "-nostdin -hide_banner -reconnect 1 -reconnect_streamed 1 -reconnect_on_network_error 1 -reconnect_delay_max 8 -fflags +genpts+discardcorrupt -err_detect ignore_err "
+	return "-nostdin -hide_banner -re -threads 1 -filter_threads 1 -filter_complex_threads 1 -reconnect 1 -reconnect_streamed 1 -reconnect_on_network_error 1 -reconnect_delay_max 8 -fflags +genpts+discardcorrupt -err_detect ignore_err "
 }
 
 func videoSize(path string) (int, int) {
@@ -127,7 +127,7 @@ func stillCoverCamera(cover string) *ntgcalls.VideoDescription {
 		Height:      int16(h),
 		Fps:         8,
 		Input: fmt.Sprintf(
-			"ffmpeg %s -an -f rawvideo -r 8 -pix_fmt yuv420p -vf scale=%d:%d -v quiet pipe:1",
+			"ffmpeg -nostdin -hide_banner -re -threads 1 -filter_threads 1 -filter_complex_threads 1 %s -an -f rawvideo -r 8 -pix_fmt yuv420p -vf scale=%d:%d -v quiet pipe:1",
 			input, w, h,
 		),
 	}

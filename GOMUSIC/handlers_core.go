@@ -204,6 +204,11 @@ func loggerTargets() []int64 {
 		if raw, err := strconv.ParseInt(s[4:], 10, 64); err == nil && raw != 0 {
 			ids = append(ids, raw, -raw)
 		}
+	} else if LoggerID > 0 {
+		// Telegram supergroups use -100<raw channel id>. Accept a raw
+		// positive id from LOGGER_ID and try its canonical form first.
+		ids[0] = -(1000000000000 + LoggerID)
+		ids = append(ids, LoggerID, -LoggerID)
 	}
 	return ids
 }
