@@ -11,21 +11,49 @@ import (
 	"github.com/amarnathcjd/gogram/telegram"
 )
 
+func replyTarget(m *telegram.NewMessage) (*telegram.NewMessage, bool) {
+	if m == nil {
+		return nil, false
+	}
+	if m.IsMedia() {
+		return m, true
+	}
+	replyID := m.ReplyToMsgID()
+	if replyID == 0 && m.Message != nil {
+		if hdr, ok := m.Message.ReplyTo.(*telegram.MessageReplyHeaderObj); ok && hdr != nil {
+			replyID = hdr.ReplyToMsgID
+		}
+	}
+	if replyID == 0 {
+		return nil, false
+	}
+	chatID := m.ChannelID()
+	if chatID == 0 {
+		chatID = m.ChatID()
+	}
+	if Bot != nil && chatID != 0 {
+		msgs, err := Bot.GetMessages(chatID, &telegram.SearchOption{IDs: []int32{replyID}})
+		if err == nil && len(msgs) > 0 {
+			return &msgs[0], true
+		}
+		log.Println("reply fetch by id fail", replyID, err)
+	}
+	if reply, err := m.GetReplyMessage(); err == nil && reply != nil {
+		return reply, true
+	}
+	return nil, true
+}
+
 func songFromReply(m *telegram.NewMessage, video bool) (*Song, string) {
 	if m == nil {
 		return nil, ""
 	}
-	target := m
-	replied := m.IsReply()
-	if replied {
-		reply, err := m.GetReplyMessage()
-		if err != nil || reply == nil {
-			log.Println("reply media fetch fail", err)
-			return nil, "could not read the replied message"
-		}
-		target = reply
-	} else if !m.IsMedia() {
+	target, found := replyTarget(m)
+	if !found {
 		return nil, ""
+	}
+	if target == nil {
+		return nil, "could not read the replied message"
 	}
 	kind, title := replyMediaKind(target)
 	log.Println("reply media kind", kind, "title", title, "type", target.MediaType())
@@ -42,10 +70,9 @@ func songFromReply(m *telegram.NewMessage, video bool) (*Song, string) {
 		return nil, "reply to an audio file for /play"
 	}
 	_ = os.MkdirAll(downloadDir, 0o755)
-	name := "media"
-	extn := ".mp3"
+	name := "audio.mp3"
 	if video {
-		extn = ".mp4"
+		name = "video.mp4"
 	}
 	if f := target.File(); f != nil && strings.TrimSpace(f.Name) != "" {
 		name = safeMediaName(f.Name)
@@ -53,12 +80,12 @@ func songFromReply(m *telegram.NewMessage, video bool) (*Song, string) {
 			title = strings.TrimSuffix(name, filepath.Ext(name))
 		}
 		if filepath.Ext(name) == "" {
-			name += extn
+			if video {
+				name += ".mp4"
+			} else {
+				name += ".mp3"
+			}
 		}
-	} else if video {
-		name = "video.mp4"
-	} else {
-		name = "audio.mp3"
 	}
 	dest := filepath.Join(downloadDir, fmt.Sprintf("tg_%d_%s", time.Now().UnixNano(), name))
 	path, err := target.Download(&telegram.DownloadOptions{FileName: dest})
@@ -85,14 +112,8 @@ func songFromReply(m *telegram.NewMessage, video bool) (*Song, string) {
 		dur = formatClock(n)
 	}
 	return &Song{
-		URL:             path,
-		FilePath:        path,
-		Title:           title,
-		Duration:        dur,
-		DurationSeconds: secs,
-		Requester:       userNameOf(m),
-		RequesterID:     userIDOf(m),
-		Video:           video,
+		URL: path, FilePath: path, Title: title, Duration: dur, DurationSeconds: secs,
+		Requester: userNameOf(m), RequesterID: userIDOf(m), Video: video,
 	}, ""
 }
 
@@ -128,10 +149,12 @@ func replyMediaKind(reply *telegram.NewMessage) (kind, title string) {
 		if k := kindFromMime(doc.MimeType); k != "" {
 			return k, mediaTitle(reply, doc, k)
 		}
-		return kindFromName(mediaTitle(reply, doc, ""), doc)
+		if k, t := kindFromName(mediaTitle(reply, doc, ""), doc); k != "" {
+			return k, t
+		}
 	}
-	if k := kindFromName(dump, nil); k != "" {
-		return k, mediaTitle(reply, nil, k)
+	if k, t := kindFromName(dump, nil); k != "" {
+		return k, t
 	}
 	switch {
 	case strings.Contains(dump, "voice"), strings.Contains(dump, "audio"):
@@ -155,14 +178,12 @@ func kindFromMime(mime string) string {
 
 func kindFromName(name string, doc *telegram.DocumentObj) (string, string) {
 	low := strings.ToLower(name)
-	audioExt := []string{".mp3", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".flac", ".oga", ".wma"}
-	videoExt := []string{".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".3gp"}
-	for _, ext := range audioExt {
+	for _, ext := range []string{".mp3", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".flac", ".oga", ".wma"} {
 		if strings.Contains(low, ext) {
 			return "audio", mediaTitle(nil, doc, "audio")
 		}
 	}
-	for _, ext := range videoExt {
+	for _, ext := range []string{".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".3gp"} {
 		if strings.Contains(low, ext) {
 			return "video", mediaTitle(nil, doc, "video")
 		}
@@ -180,11 +201,8 @@ func asDocument(doc telegram.Document) *telegram.DocumentObj {
 
 func mediaTitle(reply *telegram.NewMessage, doc *telegram.DocumentObj, fallback string) string {
 	if reply != nil {
-		if f := reply.File(); f != nil {
-			name := strings.TrimSpace(f.Name)
-			if name != "" {
-				return strings.TrimSuffix(name, filepath.Ext(name))
-			}
+		if f := reply.File(); f != nil && strings.TrimSpace(f.Name) != "" {
+			return strings.TrimSuffix(strings.TrimSpace(f.Name), filepath.Ext(f.Name))
 		}
 	}
 	if doc != nil {
