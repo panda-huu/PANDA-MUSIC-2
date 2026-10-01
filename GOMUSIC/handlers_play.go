@@ -44,15 +44,36 @@ func processPlayCommand(m *telegram.NewMessage, video bool) error {
 	addServedChat(chatID)
 	addServedUser(userIDOf(m))
 	query := cmdArgs(m)
-	_, _ = m.Delete()
 	if last, ok := lastCmd[chatID]; ok && time.Since(last) < time.Duration(Cooldown)*time.Second {
+		_, _ = m.Delete()
 		return nil
 	}
 	lastCmd[chatID] = time.Now()
 	if query == "" {
-		_, _ = sendHTML(Bot, chatID, richHeading("usage", 3)+richNote("<code>/play song name</code>"), nil)
+		var pm *telegram.NewMessage
+		if m.IsReply() || m.IsMedia() {
+			pm, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("downloading...")), nil)
+		}
+		song, why := songFromReply(m, video)
+		_, _ = m.Delete()
+		if song != nil {
+			return playPreparedMsg(m, *song, pm)
+		}
+		if pm != nil {
+			_, _ = pm.Delete()
+		}
+		if why != "" {
+			_, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps(why)), nil)
+			return nil
+		}
+		usage := "<code>/play song name</code> or reply to an audio file"
+		if video {
+			usage = "<code>/vplay song name</code> or reply to a video"
+		}
+		_, _ = sendHTML(Bot, chatID, richHeading("usage", 3)+richNote(usage), nil)
 		return nil
 	}
+	_, _ = m.Delete()
 	return processPlay(m, query, video)
 }
 
