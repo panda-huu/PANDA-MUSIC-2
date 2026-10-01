@@ -69,10 +69,5 @@ go mod tidy
 echo "==> build"
 go build -o gomusic ./GOMUSIC
 
-echo "==> start"
-nohup ./gomusic > /root/gomusic.log 2>&1 &
-sleep 2
-echo "log: /root/gomusic.log"
-tail -n 30 /root/gomusic.log || true
-echo
-echo "Done. Follow logs: tail -f /root/gomusic.log"
+echo "==> start (foreground)"
+exec ./gomusic
