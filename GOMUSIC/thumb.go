@@ -237,6 +237,14 @@ func makeEditedThumb(cover, title, duration, requester, videoID string) string {
 	cardA := roundAlpha(cardR, 158)
 	artA := roundAlpha(artR, 255)
 
+	fill := 1
+	if duration != "" && duration != "0:00" {
+		fill = 2
+	}
+	fillW := barW * fill / 100
+	if fillW < 2 {
+		fillW = 2
+	}
 	fc := "[0:v]scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720," +
 		"gblur=sigma=22,eq=brightness=-0.10:saturation=0.88[bg];" +
 		"color=c=black:s=" + itoa(cw) + "x" + itoa(ch) + ":d=1:r=1[cardbase];" +
@@ -247,7 +255,7 @@ func makeEditedThumb(cover, title, duration, requester, videoID string) string {
 		"[withcard][art]overlay=" + itoa(ax) + ":" + itoa(ay) + "[v];" +
 		"[v]" +
 		"drawbox=x=" + itoa(barX) + ":y=" + itoa(progressY) + ":w=" + itoa(barW) + ":h=6:color=white@0.22:t=fill," +
-		"drawbox=x=" + itoa(barX) + ":y=" + itoa(progressY) + ":w=" + itoa(barW*28/100) + ":h=6:color=white@0.95:t=fill," +
+		"drawbox=x=" + itoa(barX) + ":y=" + itoa(progressY) + ":w=" + itoa(fillW) + ":h=6:color=white@0.95:t=fill," +
 		"drawbox=x=" + itoa(cx+cw/2-28) + ":y=" + itoa(ctrlY) + ":w=14:h=34:color=white@0.96:t=fill," +
 		"drawbox=x=" + itoa(cx+cw/2+6) + ":y=" + itoa(ctrlY) + ":w=14:h=34:color=white@0.96:t=fill," +
 		"drawbox=x=" + itoa(ax) + ":y=" + itoa(volY) + ":w=" + itoa(cw-80) + ":h=5:color=white@0.18:t=fill," +

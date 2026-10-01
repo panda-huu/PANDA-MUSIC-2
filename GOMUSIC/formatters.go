@@ -147,33 +147,44 @@ func shortTitle(title string, n int) string {
 }
 
 func progressBar(elapsed, total float64) string {
-	if total <= 0 {
-		return "N/A"
+	if elapsed < 0 {
+		elapsed = 0
 	}
 	played := fmtTime(elapsed)
+	if total <= 0 {
+		slot := int(elapsed/8) % 9
+		marks := []rune("—————————")
+		if slot >= 0 && slot < len(marks) {
+			marks[slot] = '♡'
+		}
+		return played + " " + string(marks)
+	}
 	dur := fmtTime(total)
 	percentage := (elapsed / total) * 100
+	if percentage > 100 {
+		percentage = 100
+	}
 	umm := int(math.Floor(percentage))
-	bar := "\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2661"
+	bar := "—————————♡"
 	switch {
 	case umm <= 10:
-		bar = "\u2661\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014"
+		bar = "♡—————————"
 	case umm <= 20:
-		bar = "\u2014\u2661\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014"
+		bar = "—♡————————"
 	case umm <= 30:
-		bar = "\u2014\u2014\u2661\u2014\u2014\u2014\u2014\u2014\u2014\u2014"
+		bar = "——♡———————"
 	case umm <= 40:
-		bar = "\u2014\u2014\u2014\u2661\u2014\u2014\u2014\u2014\u2014\u2014"
+		bar = "———♡——————"
 	case umm <= 50:
-		bar = "\u2014\u2014\u2014\u2014\u2661\u2014\u2014\u2014\u2014\u2014"
+		bar = "————♡—————"
 	case umm <= 60:
-		bar = "\u2014\u2014\u2014\u2014\u2014\u2661\u2014\u2014\u2014\u2014"
+		bar = "—————♡————"
 	case umm <= 70:
-		bar = "\u2014\u2014\u2014\u2014\u2014\u2014\u2661\u2014\u2014\u2014"
+		bar = "——————♡———"
 	case umm <= 80:
-		bar = "\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2661\u2014\u2014"
+		bar = "———————♡——"
 	case umm <= 95:
-		bar = "\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2661\u2014"
+		bar = "————————♡—"
 	}
 	return played + " " + bar + " " + dur
 }

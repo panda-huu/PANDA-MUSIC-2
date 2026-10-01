@@ -70,6 +70,22 @@ func peekCurrent(chatID int64) *Song {
 	return &s
 }
 
+func setCurrentDuration(chatID int64, song Song) {
+	queueMu.Lock()
+	defer queueMu.Unlock()
+	q := chatQueues[chatID]
+	if len(q) == 0 {
+		return
+	}
+	if song.Duration != "" {
+		q[0].Duration = song.Duration
+	}
+	if song.DurationSeconds > 0 {
+		q[0].DurationSeconds = song.DurationSeconds
+	}
+	chatQueues[chatID] = q
+}
+
 func peekNext(chatID int64) *Song {
 	queueMu.Lock()
 	defer queueMu.Unlock()

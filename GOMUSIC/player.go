@@ -85,10 +85,15 @@ func playSongOpt(chatID int64, message *telegram.NewMessage, song Song, stayInCa
 		if p, e := maybeApplyEffects(chatID, src.File); e == nil {
 			src.File, src.Audio = p, p
 		}
-		if secs := probeDuration(src.File); secs > 2 {
+	}
+	if src.File != "" && !isHTTP(src.File) {
+		if secs := probeDuration(src.File); secs > 1 {
 			song.DurationSeconds = int(secs)
 			song.Duration = formatClock(secs)
+		} else if song.DurationSeconds > 1 && (song.Duration == "" || song.Duration == "0:00") {
+			song.Duration = formatClock(float64(song.DurationSeconds))
 		}
+		setCurrentDuration(chatID, song)
 	}
 	playPath := src.File
 	if playPath == "" {
@@ -116,9 +121,9 @@ func playSongOpt(chatID int64, message *telegram.NewMessage, song Song, stayInCa
 	addServedChat(chatID)
 	incrementPlayCount(chatID)
 	go logPlayAction(chatID, song, false)
-	total := float64(parseDur(song.Duration))
-	if total <= 0 && song.DurationSeconds > 0 {
-		total = float64(song.DurationSeconds)
+	total := float64(song.DurationSeconds)
+	if total <= 0 {
+		total = float64(parseDur(song.Duration))
 	}
 	if message != nil {
 		_, _ = message.Delete()
@@ -128,22 +133,45 @@ func playSongOpt(chatID int64, message *telegram.NewMessage, song Song, stayInCa
 	return nil
 }
 
+func samePlaying(cur *Song, song Song) bool {
+	if cur == nil {
+		return false
+	}
+	if cur.URL != "" && cur.URL == song.URL {
+		return true
+	}
+	if cur.FilePath != "" && (cur.FilePath == song.FilePath || cur.FilePath == song.URL || cur.URL == song.FilePath) {
+		return true
+	}
+	return cur.Title == song.Title && cur.RequesterID == song.RequesterID && song.RequesterID != 0
+}
+
 func updateProgress(chatID int64, msg *telegram.NewMessage, start time.Time, total float64, song Song) {
 	for {
-		time.Sleep(15 * time.Second)
+		time.Sleep(8 * time.Second)
 		if isSwitching(chatID) {
 			continue
 		}
 		cur := peekCurrent(chatID)
-		if cur == nil || cur.URL != song.URL {
+		if !samePlaying(cur, song) {
 			return
 		}
-		elapsed := time.Since(start).Seconds()
+		if cur.DurationSeconds > 1 && total <= 1 {
+			total = float64(cur.DurationSeconds)
+			song.Duration = cur.Duration
+			song.DurationSeconds = cur.DurationSeconds
+		}
+		elapsed := time.Since(start).Seconds() + float64(getSeekState(chatID))
+		if elapsed < 0 {
+			elapsed = 0
+		}
 		if total > 0 && elapsed > total {
 			elapsed = total
 		}
 		if msg != nil {
-			_ = editHTML(msg, nowPlayingCaption(song), nowPlayingKB(chatID, elapsed, total))
+			if err := editHTML(msg, nowPlayingCaption(song), nowPlayingKB(chatID, elapsed, total)); err != nil && !isNotModified(err) {
+				log.Println("progress edit failed", chatID, err)
+			}
 		}
 		if total > 0 && elapsed >= total {
 			go handleStreamEnd(chatID)

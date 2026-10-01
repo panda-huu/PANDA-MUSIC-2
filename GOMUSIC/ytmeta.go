@@ -17,13 +17,27 @@ func init() {
 }
 
 func probeDuration(path string) float64 {
-	out, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration",
-		"-of", "default=noprint_wrappers=1:nokey=1", path).Output()
-	if err != nil {
+	if strings.TrimSpace(path) == "" {
 		return 0
 	}
-	n, _ := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
-	return n
+	try := [][]string{
+		{"-show_entries", "format=duration"},
+		{"-select_streams", "a:0", "-show_entries", "stream=duration"},
+		{"-select_streams", "v:0", "-show_entries", "stream=duration"},
+	}
+	for _, extra := range try {
+		args := append([]string{"-v", "error"}, extra...)
+		args = append(args, "-of", "default=noprint_wrappers=1:nokey=1", path)
+		out, err := exec.Command("ffprobe", args...).Output()
+		if err != nil {
+			continue
+		}
+		n, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+		if err == nil && n > 1 {
+			return n
+		}
+	}
+	return 0
 }
 
 func formatClock(secs float64) string {
