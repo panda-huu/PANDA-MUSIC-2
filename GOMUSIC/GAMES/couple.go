@@ -1,6 +1,7 @@
 package games
 
 import (
+	"html"
 	"image"
 	"image/color"
 	"image/draw"
@@ -254,7 +255,7 @@ func drawPlus(dst *image.RGBA, cx, cy int, c color.RGBA) {
 }
 
 func htmlEsc(s string) string {
-	return strings.NewReplacer("&", "&", "<", "<", ">", ">", `"`, """).Replace(s)
+	return html.EscapeString(s)
 }
 
 func itoa(n int) string {
