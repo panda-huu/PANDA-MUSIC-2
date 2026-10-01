@@ -293,7 +293,7 @@ func downloadViaAPI(videoID, typ, dest string) (string, error) {
 		api = "https://aru.up.railway.app"
 	}
 	if key == "" {
-		key = "PANDA-KEY"
+		key = "PANDA"
 	}
 	full := "https://www.youtube.com/watch?v=" + videoID
 
