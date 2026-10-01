@@ -200,7 +200,6 @@ func ensureVC(chatID int64) error {
 		}
 		return err
 	}
-	time.Sleep(350 * time.Millisecond)
 	return nil
 }
 
@@ -373,7 +372,7 @@ func joinExistingCall(chatID int64, media ntgcalls.MediaDescription, video bool)
 			continue
 		}
 
-		me, err := Assistant.GetMe()
+		me, err := assistantSelf()
 		if err != nil {
 			return err
 		}
@@ -460,10 +459,19 @@ func assistantSelf() (*telegram.UserObj, error) {
 	if Assistant == nil {
 		return nil, fmt.Errorf("assistant not ready")
 	}
-	me, err := Assistant.GetMe()
+	me, err := assistantSelf()
 	if err != nil {
 		return nil, err
 	}
 	cachedAssistant = me
 	return me, nil
+}
+
+func holdMedia() ntgcalls.MediaDescription {
+	return ntgcalls.MediaDescription{Microphone: &ntgcalls.AudioDescription{
+		MediaSource:  ntgcalls.MediaSourceShell,
+		SampleRate:   48000,
+		ChannelCount: 2,
+		Input:        "ffmpeg -f lavfi -i anullsrc=r=48000:cl=stereo -t 600 -f s16le -ac 2 -ar 48000 -v quiet pipe:1",
+	}}
 }

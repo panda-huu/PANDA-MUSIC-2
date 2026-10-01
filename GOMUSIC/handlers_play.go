@@ -102,6 +102,9 @@ func processPlay(m *telegram.NewMessage, query string, video bool) error {
 			query = "https://www.youtube.com/watch?v=" + id
 		}
 	}
+	if !already {
+		go snapJoin(chatID)
+	}
 	searchCh := make(chan playSearch, 1)
 	go func() {
 		urlStr, title, durISO, thumb, playlist, err := searchSmart(query)
@@ -378,7 +381,6 @@ func tryJoinAssistant(chatID int64, pm *telegram.NewMessage) bool {
 
 	inviteErr := withFloodWait(func() error { return inviteAssistantViaBot(chatID) })
 	if inviteErr == nil {
-		time.Sleep(200 * time.Millisecond)
 		_ = promoteAssistant(chatID)
 		return true
 	}
@@ -397,14 +399,12 @@ func tryJoinAssistant(chatID int64, pm *telegram.NewMessage) bool {
 			})
 		}
 		if joinErr == nil {
-			time.Sleep(200 * time.Millisecond)
-			_ = promoteAssistant(chatID)
+				_ = promoteAssistant(chatID)
 			return true
 		}
 		inviteErr = joinErr
 	}
 
-	time.Sleep(250 * time.Millisecond)
 	if ok, _ := assistantIn(chatID); ok {
 		_ = promoteAssistant(chatID)
 		return true
@@ -493,4 +493,15 @@ func handleReboot(m *telegram.NewMessage) error {
 	leaveVCNow(m.ChatID())
 	_, _ = sendHTML(Bot, m.ChatID(), wrapBQ(smallcaps("chat rebooted")), nil)
 	return nil
+}
+
+func snapJoin(chatID int64) {
+	ok, banned := assistantIn(chatID)
+	if banned || !ok {
+		return
+	}
+	_ = ensureVC(chatID)
+	if err := ntgPlay(chatID, holdMedia(), false); err == nil {
+		markLiveSession(chatID)
+	}
 }

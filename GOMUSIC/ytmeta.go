@@ -79,10 +79,13 @@ func oembedTitle(id string) string {
 
 func searchSmart(query string) (string, string, string, string, []ytItem, error) {
 	q := strings.TrimSpace(query)
+	if url, title, dur, thumb, list, err := searchYT(q); err == nil && (url != "" || len(list) > 0) {
+		return url, title, dur, thumb, list, nil
+	}
 	if item, err := searchViaYTDLP(q); err == nil && item.Link != "" {
 		return item.Link, item.Title, item.Duration, item.Thumbnail, nil, nil
 	}
-	return searchYT(q)
+	return "", "", "", "", nil, fmt.Errorf("search failed")
 }
 
 func searchViaYTDLP(query string) (ytItem, error) {
