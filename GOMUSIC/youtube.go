@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -296,11 +297,7 @@ func downloadViaAPI(videoID, typ, dest string) (string, error) {
 		key = "PANDA"
 	}
 	full := "https://www.youtube.com/watch?v=" + videoID
-
-	// Stream through ARU-YT-V3 itself. This is important: the YouTube
-	// media URL is resolved and consumed on the same ARU server, so an
-	// IP-bound googlevideo URL never has to be handed to this VPS.
-	u, _ := url.Parse(api + "/stream")
+	u, _ := url.Parse(api + "/download")
 	q := u.Query()
 	q.Set("url", full)
 	q.Set("type", typ)
@@ -311,7 +308,41 @@ func downloadViaAPI(videoID, typ, dest string) (string, error) {
 		q.Set("format", "m4a")
 	}
 	u.RawQuery = q.Encode()
-	return u.String(), nil
+	log.Printf("download API request %s type=%s", api+"/download", typ)
+	client := &http.Client{Timeout: 15 * time.Minute}
+	resp, err := client.Get(u.String())
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 400))
+		return "", fmt.Errorf("API HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	ct := strings.ToLower(resp.Header.Get("Content-Type"))
+	if typ == "video" && strings.HasPrefix(ct, "audio/") {
+		io.Copy(io.Discard, resp.Body)
+		return "", fmt.Errorf("API gave audio file, not video stream")
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return "", err
+	}
+	f, err := os.Create(dest)
+	if err != nil {
+		return "", err
+	}
+	n, err := io.Copy(f, resp.Body)
+	f.Close()
+	if err != nil {
+		_ = os.Remove(dest)
+		return "", err
+	}
+	if n < 1024 {
+		_ = os.Remove(dest)
+		return "", fmt.Errorf("empty API file")
+	}
+	log.Printf("download API saved %s bytes=%d", dest, n)
+	return dest, nil
 }
 func deleteFile(path string) {
 	if path != "" && !isHTTP(path) {

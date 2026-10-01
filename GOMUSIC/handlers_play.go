@@ -135,14 +135,6 @@ func processPlay(m *telegram.NewMessage, query string, video bool) error {
 		_ = editHTML(pm, wrapBQ(smallcaps("song not found")), nil)
 		return nil
 	}
-	// Join the VC before downloading the actual track. The silent source is
-	// replaced by the real audio/video stream as soon as downloadWithRetry returns.
-	if !already {
-		if err := preparePlaybackCall(chatID, video); err != nil {
-			_ = editHTML(pm, wrapBQ(smallcaps("assistant VC join failed")+"\n<code>"+richEsc(err.Error())+"</code>"), nil)
-			return nil
-		}
-	}
 	req := userNameOf(m)
 	reqID := userIDOf(m)
 	if len(playlist) > 0 {
