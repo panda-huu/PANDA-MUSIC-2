@@ -1,7 +1,5 @@
 # GOMUSICV2
 
-Kanha-themed Telegram music bot in Go.
-
 Voice chats use **gogram + ntgcalls**. Start / help / player / queue panels use blockquote captions and coloured buttons. Queues stay in memory — no database.
 
 | thing | version |
@@ -70,51 +68,3 @@ git pull
 bash setup.sh
 ```
 
-Private repo pull needs a GitHub token, not a password:
-
-```bash
-git pull https://USERNAME:TOKEN@github.com/nikhil390u8o/GOMUSICV2.git
-```
-
-## AUTH_KEY_DUPLICATED (code 406)
-
-```
-assistant connect: AUTH_KEY_DUPLICATED
-The authorization key was used under two different IP addresses simultaneously
-```
-
-`STRING_SESSION` is the assistant user account. Telegram allows that key from **one IP at a time**.
-
-It happens when the same session is running in two places:
-
-- old Railway / old VPS still online
-- two `./gomusic` processes
-- phone + VPS both using the same userbot session from different networks at once
-
-Fix:
-
-1. Stop every old copy.
-
-```bash
-pkill -f gomusic || true
-```
-
-Also stop / delete the old Railway service if it is still deployed.
-
-2. Make a **new** Pyrogram string session for the assistant account.
-3. Put only that new value in `.env` as `STRING_SESSION`.
-4. Run the bot on **one** server only.
-
-```bash
-cd /root/GOMUSICV2
-bash setup.sh
-```
-
-Do not start the bot on Railway and this VPS together with the same session.
-
-## Notes
-
-- Thumbnails are drawn by ffmpeg (`GOMUSIC/thumb.go`). Need `ffmpeg` + DejaVu fonts.
-- Hide thumbs in a chat with `/nothumb`.
-- First build can take a few minutes while Go downloads modules.
-- `cd \~/GOMUSICV2` is wrong. Use `cd ~/GOMUSICV2` or `cd /root/GOMUSICV2`.
