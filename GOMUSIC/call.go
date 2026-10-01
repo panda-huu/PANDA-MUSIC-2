@@ -452,6 +452,8 @@ func joinExistingCall(chatID int64, media ntgcalls.MediaDescription, video bool)
 
 var cachedAssistant *telegram.UserObj
 
+// assistantSelf returns the cached assistant UserObj, fetching it once via GetMe.
+// Previously this called itself recursively causing a stack overflow on first /play.
 func assistantSelf() (*telegram.UserObj, error) {
 	if cachedAssistant != nil {
 		return cachedAssistant, nil
@@ -459,19 +461,26 @@ func assistantSelf() (*telegram.UserObj, error) {
 	if Assistant == nil {
 		return nil, fmt.Errorf("assistant not ready")
 	}
-	me, err := assistantSelf()
+	raw, err := Assistant.GetMe()
 	if err != nil {
 		return nil, err
 	}
+	me, ok := raw.(*telegram.UserObj)
+	if !ok {
+		return nil, fmt.Errorf("unexpected GetMe type %T", raw)
+	}
 	cachedAssistant = me
-	return me, nil
+	return cachedAssistant, nil
 }
 
+// holdMedia streams 30 s of silence to keep the call slot open while the real
+// track downloads. Was 600 s before — that spawned a long-lived ffmpeg process
+// that pushed the container past its memory limit and triggered the OOM killer.
 func holdMedia() ntgcalls.MediaDescription {
 	return ntgcalls.MediaDescription{Microphone: &ntgcalls.AudioDescription{
 		MediaSource:  ntgcalls.MediaSourceShell,
 		SampleRate:   48000,
 		ChannelCount: 2,
-		Input:        "ffmpeg -f lavfi -i anullsrc=r=48000:cl=stereo -t 600 -f s16le -ac 2 -ar 48000 -v quiet pipe:1",
+		Input:        "ffmpeg -f lavfi -i anullsrc=r=48000:cl=stereo -t 30 -f s16le -ac 2 -ar 48000 -v quiet pipe:1",
 	}}
 }
