@@ -308,6 +308,25 @@ func ntgPlay(chatID int64, media ntgcalls.MediaDescription, video bool) error {
 	return joinExistingCall(chatID, media, video || media.Camera != nil)
 }
 
+// preparePlaybackCall joins the assistant to the active VC before the real
+// track is downloaded. A short silent stream keeps the ntgcalls connection
+// alive, so playSongOpt only has to swap the source when the download finishes.
+func preparePlaybackCall(chatID int64) error {
+	if Calls == nil {
+		return errors.New("ntgcalls not ready")
+	}
+	if hasLocalCall(chatID) && isLiveSession(chatID) {
+		return nil
+	}
+	if err := joinExistingCall(chatID, holdMedia(), false); err != nil {
+		return err
+	}
+	markLiveSession(chatID)
+	callIsVideo[chatID] = false
+	addServedChat(chatID)
+	return nil
+}
+
 func resetLocalCall(chatID int64) {
 	if Calls != nil {
 		_ = Calls.Stop(chatID)
