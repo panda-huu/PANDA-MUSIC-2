@@ -11,16 +11,30 @@ import (
 )
 
 func songFromReply(m *telegram.NewMessage, video bool) (*Song, string) {
-	if m == nil || !m.IsReply() {
+	if m == nil {
 		return nil, ""
 	}
-	reply, err := m.GetReplyMessage()
-	if err != nil || reply == nil {
+	target := m
+	replied := false
+	if m.IsReply() {
+		reply, err := m.GetReplyMessage()
+		if err != nil || reply == nil {
+			return nil, "could not read the replied message"
+		}
+		target = reply
+		replied = true
+	} else if !m.IsMedia() {
 		return nil, ""
 	}
-	kind, title := replyMediaKind(reply)
+	kind, title := replyMediaKind(target)
 	if kind == "" {
-		return nil, ""
+		if !replied {
+			return nil, ""
+		}
+		if video {
+			return nil, "reply to a video for /vplay"
+		}
+		return nil, "reply to an audio file for /play"
 	}
 	if video && kind != "video" {
 		return nil, "reply to a video for /vplay"
@@ -30,9 +44,9 @@ func songFromReply(m *telegram.NewMessage, video bool) (*Song, string) {
 	}
 	_ = os.MkdirAll(downloadDir, 0o755)
 	name := "media"
-	if f := reply.File(); f != nil && strings.TrimSpace(f.Name) != "" {
+	if f := target.File(); f != nil && strings.TrimSpace(f.Name) != "" {
 		name = safeMediaName(f.Name)
-		if title == "" || title == "audio" || title == "video" {
+		if title == "" || title == "audio" || title == "video" || title == "voice" {
 			title = strings.TrimSuffix(name, filepath.Ext(name))
 		}
 	} else if video {
@@ -41,14 +55,14 @@ func songFromReply(m *telegram.NewMessage, video bool) (*Song, string) {
 		name = "audio.mp3"
 	}
 	dest := filepath.Join(downloadDir, fmt.Sprintf("tg_%d_%s", time.Now().UnixNano(), name))
-	path, err := reply.Download(&telegram.DownloadOptions{FileName: dest})
+	path, err := target.Download(&telegram.DownloadOptions{FileName: dest})
 	if err != nil || path == "" {
 		if err == nil {
 			err = fmt.Errorf("empty download")
 		}
 		return nil, "download failed: " + err.Error()
 	}
-	if st, e := os.Stat(path); e != nil || st.Size() < 64 {
+	if st, e := os.Stat(path); e != nil || st.Size() < 1024 {
 		return nil, "downloaded file is empty"
 	}
 	if title == "" {
@@ -76,6 +90,24 @@ func replyMediaKind(reply *telegram.NewMessage) (kind, title string) {
 	if reply == nil {
 		return "", ""
 	}
+	if media, ok := reply.Media().(*telegram.MessageMediaDocument); ok && media != nil {
+		doc := asDocument(media.Document)
+		switch {
+		case media.Voice:
+			return "audio", mediaTitle(reply, doc, "voice")
+		case media.Round, media.Video:
+			return "video", mediaTitle(reply, doc, "video")
+		}
+		if doc != nil {
+			mime := strings.ToLower(doc.MimeType)
+			switch {
+			case strings.HasPrefix(mime, "audio/"), mime == "application/ogg":
+				return "audio", mediaTitle(reply, doc, "audio")
+			case strings.HasPrefix(mime, "video/"):
+				return "video", mediaTitle(reply, doc, "video")
+			}
+		}
+	}
 	if doc := reply.Audio(); doc != nil {
 		return "audio", mediaTitle(reply, doc, "audio")
 	}
@@ -92,6 +124,14 @@ func replyMediaKind(reply *telegram.NewMessage) (kind, title string) {
 		}
 	}
 	return "", ""
+}
+
+func asDocument(doc telegram.Document) *telegram.DocumentObj {
+	if doc == nil {
+		return nil
+	}
+	d, _ := doc.(*telegram.DocumentObj)
+	return d
 }
 
 func mediaTitle(reply *telegram.NewMessage, doc *telegram.DocumentObj, fallback string) string {
@@ -138,13 +178,22 @@ func safeMediaName(name string) string {
 }
 
 func playPrepared(m *telegram.NewMessage, song Song) error {
+	return playPreparedMsg(m, song, nil)
+}
+
+func playPreparedMsg(m *telegram.NewMessage, song Song, pm *telegram.NewMessage) error {
 	chatID := m.ChatID()
 	already := isBusy(chatID)
-	var pm *telegram.NewMessage
-	if already {
-		pm, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("adding to queue...")), nil)
-	} else {
-		pm, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("processing...")), nil)
+	if pm == nil {
+		if already {
+			pm, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("adding to queue...")), nil)
+		} else {
+			pm, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("processing...")), nil)
+		}
+	} else if already {
+		_ = editHTML(pm, wrapBQ(smallcaps("adding to queue...")), nil)
+	}
+	if !already {
 		ok, banned := assistantIn(chatID)
 		if banned {
 			_ = editHTML(pm, wrapBQ(smallcaps("assistant banned")+"\n"+smallcaps("unban")+" @"+assistantUsername), nil)
