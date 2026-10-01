@@ -11,7 +11,10 @@ func RoomPlay(chatID int64, song Song, force bool, msg *telegram.NewMessage) err
 	unlock := lockChatPlay(chatID)
 	defer unlock()
 
-	if !force && isBusy(chatID) {
+	// A connected/pre-joined VC is not the same as active playback. The current
+	// track is represented by queue[0], so only an existing queue should force
+	// a new request into the queue.
+	if !force && queueSize(chatID) > 0 {
 		pos := addToQueue(chatID, song)
 		body := incomingTrackHTML(pos-1, song)
 		if msg != nil {
