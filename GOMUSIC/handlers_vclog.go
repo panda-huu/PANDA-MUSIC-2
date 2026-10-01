@@ -25,7 +25,29 @@ func registerVoiceChatHandlers() {
 		handleVoiceChatService(m)
 		return nil
 	})
+	Bot.On(telegram.OnNewMessage, live(handleCaptionPlay))
 	Bot.AddRawHandler(&telegram.UpdateGroupCall{}, handleRawGroupCall)
+	Bot.AddRawHandler(&telegram.UpdateNewChannelMessage{}, handleRawChannelMessage)
+}
+
+func handleCaptionPlay(m *telegram.NewMessage) error {
+	if m == nil || m.IsPrivate() || blocked(m) {
+		return nil
+	}
+	root := cmdRoot(m)
+	video := root == "vplay" || root == "vplya" || strings.HasPrefix(root, "vplay")
+	audio := root == "play"
+	if !video && !audio {
+		return nil
+	}
+	_, found := replyTarget(m)
+	if !found {
+		return nil
+	}
+	if root == "play" || root == "vplay" {
+		return nil
+	}
+	return processPlayCommand(m, video)
 }
 
 func vcDedupe(key string) bool {
@@ -53,10 +75,7 @@ func sendGroupNotice(chatID int64, html string) {
 
 func announceVCStarted(chatID int64) {
 	chatID = canonChatID(chatID)
-	if chatID == 0 {
-		return
-	}
-	if vcDedupe(fmt.Sprintf("start:%d", chatID)) {
+	if chatID == 0 || vcDedupe(fmt.Sprintf("start:%d", chatID)) {
 		return
 	}
 	sendGroupNotice(chatID, "<blockquote><b>"+smallcaps("voice chat started")+" 🥀</b></blockquote>")
@@ -64,10 +83,7 @@ func announceVCStarted(chatID int64) {
 
 func announceVCEnded(chatID int64) {
 	chatID = canonChatID(chatID)
-	if chatID == 0 {
-		return
-	}
-	if vcDedupe(fmt.Sprintf("end:%d", chatID)) {
+	if chatID == 0 || vcDedupe(fmt.Sprintf("end:%d", chatID)) {
 		return
 	}
 	sendGroupNotice(chatID, "<blockquote><b>"+smallcaps("voice chat ended.")+"🥀</b></blockquote>")
@@ -105,20 +121,14 @@ func announceVCInvite(chatID, byID int64, toIDs []int64) {
 	if len(invited) == 0 {
 		return
 	}
-	by := userMentionByID(byID)
-	if byID == 0 {
-		by = richEsc("User")
+	by := richEsc("User")
+	if byID != 0 {
+		by = userMentionByID(byID)
 	}
-	sendGroupNotice(chatID, "<blockquote>"+
-		smallcaps("invited by")+": "+by+" 🥀\n"+
-		smallcaps("invited to")+" "+strings.Join(invited, ", ")+" 🥀"+
-		"</blockquote>")
+	sendGroupNotice(chatID, "<blockquote>"+smallcaps("invited by")+": "+by+" 🥀\n"+smallcaps("invited to")+" "+strings.Join(invited, ", ")+" 🥀</blockquote>")
 }
 
 func idsFromAction(v any, skip int64) []int64 {
-	if v == nil {
-		return nil
-	}
 	seen := map[int64]bool{}
 	var out []int64
 	for _, m := range reVCUser.FindAllStringSubmatch(fmt.Sprintf("%v", v), -1) {
@@ -162,7 +172,7 @@ func handleVoiceChatService(m *telegram.NewMessage) {
 		announceVCInvite(chatID, userIDOf(m), ids)
 		return
 	}
-	if strings.Contains(kind, "invitetogroupcall") || (strings.Contains(kind, "invite") && strings.Contains(kind, "call")) {
+	if strings.Contains(kind, "invite") && strings.Contains(kind, "call") {
 		announceVCInvite(chatID, userIDOf(m), idsFromAction(m.Action, userIDOf(m)))
 		return
 	}
@@ -207,8 +217,7 @@ func handleRawGroupCall(u telegram.Update, c *telegram.Client) error {
 		announceVCEnded(chatID)
 		return nil
 	}
-	kind := strings.ToLower(fmt.Sprintf("%T", upd.Call))
-	if strings.Contains(kind, "discard") {
+	if strings.Contains(strings.ToLower(fmt.Sprintf("%T", upd.Call)), "discard") {
 		announceVCEnded(chatID)
 		return nil
 	}
@@ -220,4 +229,33 @@ func handleRawGroupCall(u telegram.Update, c *telegram.Client) error {
 	}
 	announceVCStarted(chatID)
 	return nil
+}
+
+func handleRawChannelMessage(u telegram.Update, c *telegram.Client) error {
+	upd, ok := u.(*telegram.UpdateNewChannelMessage)
+	if !ok || upd == nil || upd.Message == nil {
+		return nil
+	}
+	kind := strings.ToLower(fmt.Sprintf("%T %v", upd.Message, upd.Message))
+	if !strings.Contains(kind, "groupcall") && !strings.Contains(kind, "invite") {
+		return nil
+	}
+	log.Println("vc raw channel message", kind)
+	chatID := canonChatID(-1000000000000 - channelIDFromUpdate(kind))
+	if strings.Contains(kind, "invitetogroupcall") || (strings.Contains(kind, "invite") && strings.Contains(kind, "call")) {
+		announceVCInvite(chatID, 0, idsFromAction(upd.Message, 0))
+		return nil
+	}
+	if strings.Contains(kind, "groupcall") && !strings.Contains(kind, "scheduled") {
+		if strings.Contains(kind, "duration") && !strings.Contains(kind, "duration:0") {
+			announceVCEnded(chatID)
+		} else {
+			announceVCStarted(chatID)
+		}
+	}
+	return nil
+}
+
+func channelIDFromUpdate(s string) int64 {
+	return 0
 }
