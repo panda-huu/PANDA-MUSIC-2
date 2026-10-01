@@ -311,18 +311,18 @@ func ntgPlay(chatID int64, media ntgcalls.MediaDescription, video bool) error {
 // preparePlaybackCall joins the assistant to the active VC before the real
 // track is downloaded. A short silent stream keeps the ntgcalls connection
 // alive, so playSongOpt only has to swap the source when the download finishes.
-func preparePlaybackCall(chatID int64) error {
+func preparePlaybackCall(chatID int64, video bool) error {
 	if Calls == nil {
 		return errors.New("ntgcalls not ready")
 	}
 	if hasLocalCall(chatID) && isLiveSession(chatID) {
 		return nil
 	}
-	if err := joinExistingCall(chatID, holdMedia(), false); err != nil {
+	if err := joinExistingCall(chatID, holdMedia(video), video); err != nil {
 		return err
 	}
 	markLiveSession(chatID)
-	callIsVideo[chatID] = false
+	callIsVideo[chatID] = video
 	addServedChat(chatID)
 	return nil
 }
@@ -494,11 +494,24 @@ func assistantSelf() (*telegram.UserObj, error) {
 // holdMedia streams 30 s of silence to keep the call slot open while the real
 // track downloads. Was 600 s before — that spawned a long-lived ffmpeg process
 // that pushed the container past its memory limit and triggered the OOM killer.
-func holdMedia() ntgcalls.MediaDescription {
-	return ntgcalls.MediaDescription{Microphone: &ntgcalls.AudioDescription{
+func holdMedia(video bool) ntgcalls.MediaDescription {
+	audio := &ntgcalls.AudioDescription{
 		MediaSource:  ntgcalls.MediaSourceShell,
 		SampleRate:   48000,
 		ChannelCount: 2,
 		Input:        "ffmpeg -nostdin -hide_banner -re -threads 1 -f lavfi -i anullsrc=r=48000:cl=stereo -t 30 -f s16le -ac 2 -ar 48000 -v quiet pipe:1",
-	}}
+	}
+	if !video {
+		return ntgcalls.MediaDescription{Microphone: audio}
+	}
+	return ntgcalls.MediaDescription{
+		Microphone: audio,
+		Camera: &ntgcalls.VideoDescription{
+			MediaSource: ntgcalls.MediaSourceShell,
+			Width: 640,
+			Height: 360,
+			Fps: 15,
+			Input: "ffmpeg -nostdin -hide_banner -re -threads 1 -f lavfi -i color=c=black:s=640x360:r=15 -an -t 30 -pix_fmt yuv420p -f rawvideo -r 15 -v quiet pipe:1",
+		},
+	}
 }
