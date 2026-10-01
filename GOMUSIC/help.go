@@ -109,6 +109,10 @@ func helpPage(key string) string {
 			"⟒ <b>▢</b> " + smallcaps("stop") + "\n" +
 			"⟒ <b>-15s</b> / <b>+15s</b> " + smallcaps("seek") + "\n" +
 			"▣ " + smallcaps("group admins only") + "</blockquote>",
+		"games": "<blockquote><b>⊚ " + smallcaps("games") + "</b></blockquote>\n" +
+			"<blockquote expandable>\u27d0 <b>/couple</b> — " + smallcaps("pick two random group members") + "\n" +
+			"\U0001f449 " + smallcaps("group only. bot must be admin to read members") + "\n" +
+			"\U0001f449 " + smallcaps("sends a pair card with profile photos and a match score") + "</blockquote>",
 	}
 	if body, ok := pages[key]; ok {
 		return body

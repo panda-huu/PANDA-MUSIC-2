@@ -28,6 +28,7 @@ var (
 	btnPlaylist  = smallcaps("playlist")
 	btnVCLogs    = smallcaps("vc-logs")
 	btnInline    = smallcaps("inline")
+	btnGames     = smallcaps("games")
 	btnPlayNow   = smallcaps("play now")
 	btnSkip      = smallcaps("skip")
 	btnSeekBack  = "-15s"

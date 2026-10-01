@@ -68,6 +68,8 @@ func registerHandlers() {
 	Bot.On("message:/broadcast", live(handleBroadcast))
 	Bot.On("message:/gcast", live(handleBroadcast))
 	Bot.On("message:/stats", live(handleStats))
+	Bot.On("message:/couple", live(handleCouple))
+	Bot.On("message:/couples", live(handleCouple))
 	Bot.On(telegram.OnNewMessage, live(handleWelcomeListen))
 	Bot.On(telegram.OnNewMessage, live(handlePlaylistListen))
 	Bot.On(telegram.OnParticipant, handleParticipant)

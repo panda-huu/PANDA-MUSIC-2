@@ -85,7 +85,7 @@ func GetHelpMarkup() [][]InlineBtn {
 		{styleBtn(btnPlay, "help:play", ColourRed), styleBtn(btnSudo, "help:sudo", ColourBlue), styleBtn(btnRestrict, "help:restrict", ColourGreen)},
 		{styleBtn(btnThumb, "help:thumb", ColourRed), styleBtn(btnStart, "help:start", ColourBlue), styleBtn(btnAutoplay, "help:autoplay", ColourGreen)},
 		{styleBtn(btnPlaylist, "help:playlist", ColourRed), styleBtn(btnVCLogs, "help:vclogs", ColourBlue), styleBtn(btnInline, "help:inline", ColourGreen)},
-		{styleBtn(btnBack, "start", ColourRed)},
+		{styleBtn(btnGames, "help:games", ColourBlue), styleBtn(btnBack, "start", ColourRed)},
 	}
 }
 
