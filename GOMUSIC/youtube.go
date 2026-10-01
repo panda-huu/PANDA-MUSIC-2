@@ -293,8 +293,8 @@ func downloadViaAPI(videoID, typ, dest string) (string, error) {
 		key = "PANDA-KEY"
 	}
 	full := "https://www.youtube.com/watch?v=" + videoID
-	client := &http.Client{Timeout: 25 * time.Second}
-	u, _ := url.Parse(api + "/direct")
+	client := &http.Client{Timeout: 15 * time.Minute}
+	u, _ := url.Parse(api + "/download")
 	q := u.Query()
 	q.Set("url", full)
 	q.Set("type", typ)
