@@ -1,13 +1,11 @@
 package main
 
 import (
-	"strings"
-
 	"github.com/amarnathcjd/gogram/telegram"
 )
 
 func playRepliedNow(m *telegram.NewMessage, video bool) error {
-	if m == nil {
+	if m == nil || !claimPlay(m) {
 		return nil
 	}
 	chatID := m.ChatID()
@@ -22,17 +20,6 @@ func playRepliedNow(m *telegram.NewMessage, video bool) error {
 	}
 	if why != "" {
 		_, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps(why)), nil)
-	}
-	return nil
-}
-
-func handleCaptionPlay(m *telegram.NewMessage) error {
-	if m == nil || m.IsPrivate() || blocked(m) {
-		return nil
-	}
-	root := cmdRoot(m)
-	if root == "vplya" || (strings.HasPrefix(root, "vplay") && root != "vplay") {
-		return playRepliedNow(m, true)
 	}
 	return nil
 }

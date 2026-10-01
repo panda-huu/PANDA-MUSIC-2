@@ -34,6 +34,7 @@ func registerHandlers() {
 	Bot.On("message:/help", live(handleHelp))
 	Bot.On("message:/play", live(handlePlay))
 	Bot.On("message:/vplay", live(handleVPlay))
+	Bot.On("message:/vplya", live(handleVPlay))
 	Bot.On("message:/playlist", live(handlePlaylist))
 	Bot.On("message:/welcome", live(handleWelcome))
 	Bot.On("message:/setwelcome", live(handleSetWelcome))

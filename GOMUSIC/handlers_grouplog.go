@@ -279,11 +279,20 @@ func botSelfID() int64 {
 }
 
 func isVCService(m *telegram.NewMessage) bool {
-	if m == nil || m.Action == nil {
+	if m == nil {
 		return false
 	}
-	kind := strings.ToLower(fmt.Sprintf("%T", m.Action))
-	return strings.Contains(kind, "groupcall") || strings.Contains(kind, "invitetogroupcall")
+	kind := serviceBlob(m)
+	if strings.Contains(kind, "groupcall") || strings.Contains(kind, "invitetogroupcall") || strings.Contains(kind, "group_call") {
+		return true
+	}
+	if strings.Contains(kind, "video chat") || strings.Contains(kind, "voice chat") {
+		return true
+	}
+	if strings.Contains(kind, "invited") && strings.Contains(kind, "chat") {
+		return true
+	}
+	return vcQuietActive(m.ChatID()) || vcQuietActive(m.ChannelID())
 }
 
 func handleParticipant(p *telegram.ParticipantUpdate) error {

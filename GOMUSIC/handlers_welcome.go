@@ -486,7 +486,7 @@ func handleWelcomeCallback(cb *telegram.CallbackQuery, data string) bool {
 }
 
 func welcomeUserJoin(chatID, uid int64, name, uname string) {
-	if uid == 0 || uid == botSelfID() {
+	if uid == 0 || uid == botSelfID() || vcQuietActive(chatID) {
 		return
 	}
 	key := fmt.Sprintf("%d:%d", canonChatID(chatID), uid)
@@ -507,27 +507,43 @@ func handleWelcomeParticipant(p *telegram.ParticipantUpdate) error {
 	if chatID == 0 && p.Channel != nil {
 		chatID = p.Channel.ID
 	}
+	if vcQuietActive(chatID) {
+		return nil
+	}
+	blob := strings.ToLower(fmt.Sprintf("%v", p))
+	if strings.Contains(blob, "groupcall") || strings.Contains(blob, "video chat") {
+		markVCQuiet(chatID)
+		return nil
+	}
 	name, uname, uid := userBits(p.User)
 	welcomeUserJoin(chatID, uid, name, uname)
 	return nil
 }
 
 func welcomeFromService(m *telegram.NewMessage) {
-	if m == nil || m.IsPrivate() || m.Action == nil || isVCService(m) {
+	if m == nil || m.IsPrivate() || isVCService(m) || vcQuietActive(m.ChatID()) || vcQuietActive(m.ChannelID()) {
+		return
+	}
+	action := m.Action
+	if action == nil && m.Message != nil {
+		action = m.Message.Action
+	}
+	if action == nil {
 		return
 	}
 	chatID := m.ChatID()
 	if id := m.ChannelID(); id != 0 {
 		chatID = id
 	}
-	kind := strings.ToLower(fmt.Sprintf("%T %v", m.Action, m.Action))
-	if strings.Contains(kind, "invite") || strings.Contains(kind, "groupcall") {
+	kind := strings.ToLower(fmt.Sprintf("%T %v", action, action))
+	if strings.Contains(kind, "invite") || strings.Contains(kind, "groupcall") || strings.Contains(kind, "video chat") || strings.Contains(kind, "voice chat") {
+		markVCQuiet(chatID)
 		return
 	}
 	if !(strings.Contains(kind, "adduser") || strings.Contains(kind, "joined")) {
 		return
 	}
-	switch a := m.Action.(type) {
+	switch a := action.(type) {
 	case *telegram.MessageActionChatAddUser:
 		for _, id := range a.Users {
 			name, uname := userFromCache(id, "User", "-")
@@ -547,11 +563,22 @@ func welcomeFromRaw(upd *telegram.UpdateChannelParticipant) {
 	if upd == nil || upd.UserID == 0 || upd.UserID == botSelfID() {
 		return
 	}
-	newName := strings.ToLower(fmt.Sprintf("%T", upd.NewParticipant))
+	chatID := canonChatID(-1000000000000 - upd.ChannelID)
+	if vcQuietActive(chatID) {
+		return
+	}
+	newName := strings.ToLower(fmt.Sprintf("%T %v", upd.NewParticipant, upd.NewParticipant))
+	prevName := strings.ToLower(fmt.Sprintf("%T %v", upd.PrevParticipant, upd.PrevParticipant))
+	if strings.Contains(newName, "call") || strings.Contains(prevName, "call") || strings.Contains(newName, "invite") {
+		markVCQuiet(chatID)
+		return
+	}
 	if strings.Contains(newName, "banned") || strings.Contains(newName, "left") || upd.NewParticipant == nil {
 		return
 	}
-	chatID := canonChatID(-1000000000000 - upd.ChannelID)
+	if upd.PrevParticipant != nil && !strings.Contains(prevName, "left") && !strings.Contains(prevName, "banned") {
+		return
+	}
 	name, uname := userFromCache(upd.UserID, "User", "-")
 	welcomeUserJoin(chatID, upd.UserID, name, uname)
 }

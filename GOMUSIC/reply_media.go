@@ -6,24 +6,92 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/amarnathcjd/gogram/telegram"
 )
 
+var playOnce sync.Map
+
+func claimPlay(m *telegram.NewMessage) bool {
+	if m == nil || m.Message == nil {
+		return true
+	}
+	key := fmt.Sprintf("%d:%d", m.ChatID(), m.Message.ID)
+	if _, loaded := playOnce.LoadOrStore(key, time.Now()); loaded {
+		return false
+	}
+	return true
+}
+
+func replyMsgID(m *telegram.NewMessage) int32 {
+	if m == nil {
+		return 0
+	}
+	if id := m.ReplyToMsgID(); id != 0 {
+		return id
+	}
+	if m.Message == nil || m.Message.ReplyTo == nil {
+		return 0
+	}
+	switch hdr := m.Message.ReplyTo.(type) {
+	case *telegram.MessageReplyHeaderObj:
+		if hdr != nil && hdr.ReplyToMsgID != 0 {
+			return hdr.ReplyToMsgID
+		}
+	}
+	s := fmt.Sprintf("%v", m.Message.ReplyTo)
+	for _, key := range []string{"ReplyToMsgID:", "reply_to_msg_id:"} {
+		if i := strings.Index(s, key); i >= 0 {
+			var id int32
+			fmt.Sscanf(s[i+len(key):], "%d", &id)
+			if id != 0 {
+				return id
+			}
+		}
+	}
+	return 0
+}
+
+func playableMessage(m *telegram.NewMessage) bool {
+	if m == nil {
+		return false
+	}
+	if m.Audio() != nil || m.Video() != nil || m.Voice() != nil || m.Document() != nil {
+		return true
+	}
+	if f := m.File(); f != nil && strings.TrimSpace(f.Name) != "" {
+		return true
+	}
+	mt := strings.ToLower(m.MediaType())
+	return strings.Contains(mt, "audio") || strings.Contains(mt, "video") || strings.Contains(mt, "voice") || strings.Contains(mt, "document")
+}
+
+func fetchByID(chatID int64, id int32) *telegram.NewMessage {
+	if id == 0 || chatID == 0 {
+		return nil
+	}
+	for _, c := range []*telegram.Client{Bot, Assistant} {
+		if c == nil {
+			continue
+		}
+		msgs, err := c.GetMessages(chatID, &telegram.SearchOption{IDs: []int32{id}})
+		if err == nil && len(msgs) > 0 {
+			return &msgs[0]
+		}
+	}
+	return nil
+}
+
 func replyTarget(m *telegram.NewMessage) (*telegram.NewMessage, bool) {
 	if m == nil {
 		return nil, false
 	}
-	if m.IsMedia() {
+	if playableMessage(m) {
 		return m, true
 	}
-	replyID := m.ReplyToMsgID()
-	if replyID == 0 && m.Message != nil {
-		if hdr, ok := m.Message.ReplyTo.(*telegram.MessageReplyHeaderObj); ok && hdr != nil {
-			replyID = hdr.ReplyToMsgID
-		}
-	}
+	replyID := replyMsgID(m)
 	if replyID == 0 {
 		return nil, false
 	}
@@ -31,16 +99,18 @@ func replyTarget(m *telegram.NewMessage) (*telegram.NewMessage, bool) {
 	if chatID == 0 {
 		chatID = m.ChatID()
 	}
-	if Bot != nil && chatID != 0 {
-		msgs, err := Bot.GetMessages(chatID, &telegram.SearchOption{IDs: []int32{replyID}})
-		if err == nil && len(msgs) > 0 {
-			return &msgs[0], true
+	if got := fetchByID(chatID, replyID); got != nil {
+		return got, true
+	}
+	if m.ChatID() != chatID {
+		if got := fetchByID(m.ChatID(), replyID); got != nil {
+			return got, true
 		}
-		log.Println("reply fetch by id fail", replyID, err)
 	}
 	if reply, err := m.GetReplyMessage(); err == nil && reply != nil {
 		return reply, true
 	}
+	log.Println("reply fetch fail", replyID, "chat", chatID)
 	return nil, true
 }
 
@@ -59,19 +129,14 @@ func songFromReply(m *telegram.NewMessage, video bool) (*Song, string) {
 	log.Println("reply media kind", kind, "title", title, "type", target.MediaType())
 	if kind == "" {
 		if video {
-			return nil, "reply to a video for /vplay"
+			return nil, "reply to a video or audio file for /vplay"
 		}
 		return nil, "reply to an audio file for /play"
 	}
-	if video && kind != "video" {
-		return nil, "reply to a video for /vplay"
-	}
-	if !video && kind != "audio" {
-		return nil, "reply to an audio file for /play"
-	}
+	wantVideo := video && kind == "video"
 	_ = os.MkdirAll(downloadDir, 0o755)
 	name := "audio.mp3"
-	if video {
+	if wantVideo {
 		name = "video.mp4"
 	}
 	if f := target.File(); f != nil && strings.TrimSpace(f.Name) != "" {
@@ -80,7 +145,7 @@ func songFromReply(m *telegram.NewMessage, video bool) (*Song, string) {
 			title = strings.TrimSuffix(name, filepath.Ext(name))
 		}
 		if filepath.Ext(name) == "" {
-			if video {
+			if wantVideo {
 				name += ".mp4"
 			} else {
 				name += ".mp3"
@@ -113,7 +178,7 @@ func songFromReply(m *telegram.NewMessage, video bool) (*Song, string) {
 	}
 	return &Song{
 		URL: path, FilePath: path, Title: title, Duration: dur, DurationSeconds: secs,
-		Requester: userNameOf(m), RequesterID: userIDOf(m), Video: video,
+		Requester: userNameOf(m), RequesterID: userIDOf(m), Video: wantVideo,
 	}, ""
 }
 

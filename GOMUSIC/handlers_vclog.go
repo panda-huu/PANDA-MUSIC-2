@@ -14,7 +14,10 @@ import (
 var (
 	vcOnce   sync.Map
 	vcActive sync.Map
+	vcCallChat sync.Map
+	vcQuiet  sync.Map
 	reVCUser = regexp.MustCompile(`\b(\d{6,})\b`)
+	reChanID = regexp.MustCompile(`(?i)channel[_ ]?id[:= ]+(\d+)`)
 )
 
 func registerVoiceChatHandlers() {
@@ -25,7 +28,12 @@ func registerVoiceChatHandlers() {
 		handleVoiceChatService(m)
 		return nil
 	})
-	Bot.On(telegram.OnNewMessage, live(handleCaptionPlay))
+	Bot.On(telegram.OnNewMessage, live(func(m *telegram.NewMessage) error {
+		if m != nil && (m.IsService() || m.Action != nil) {
+			handleVoiceChatService(m)
+		}
+		return handleCaptionPlay(m)
+	}))
 	Bot.AddRawHandler(&telegram.UpdateGroupCall{}, handleRawGroupCall)
 	Bot.AddRawHandler(&telegram.UpdateNewChannelMessage{}, handleRawChannelMessage)
 }
@@ -35,19 +43,37 @@ func handleCaptionPlay(m *telegram.NewMessage) error {
 		return nil
 	}
 	root := cmdRoot(m)
-	video := root == "vplay" || root == "vplya" || strings.HasPrefix(root, "vplay")
+	video := isVideoCmd(root)
 	audio := root == "play"
 	if !video && !audio {
 		return nil
 	}
-	_, found := replyTarget(m)
-	if !found {
-		return nil
-	}
-	if root == "play" || root == "vplay" {
+	if !playableMessage(m) && replyMsgID(m) == 0 {
 		return nil
 	}
 	return processPlayCommand(m, video)
+}
+
+func markVCQuiet(chatID int64) {
+	chatID = canonChatID(chatID)
+	if chatID == 0 {
+		return
+	}
+	until := time.Now().Add(25 * time.Second)
+	for _, id := range welcomeLookupIDs(chatID) {
+		vcQuiet.Store(id, until)
+	}
+}
+
+func vcQuietActive(chatID int64) bool {
+	for _, id := range welcomeLookupIDs(chatID) {
+		if v, ok := vcQuiet.Load(id); ok {
+			if t, ok := v.(time.Time); ok && time.Now().Before(t) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func vcDedupe(key string) bool {
@@ -61,15 +87,16 @@ func vcDedupe(key string) bool {
 }
 
 func sendGroupNotice(chatID int64, html string) {
-	if chatID == 0 || !acceptUpdates.Load() {
+	if chatID == 0 {
 		return
 	}
 	for _, id := range welcomeLookupIDs(chatID) {
 		if _, err := sendHTML(Bot, id, html, nil); err == nil {
 			log.Println("vc notice sent", id)
 			return
+		} else {
+			log.Println("vc notice fail", id, err)
 		}
-		log.Println("vc notice fail", id, err)
 	}
 }
 
@@ -78,6 +105,7 @@ func announceVCStarted(chatID int64) {
 	if chatID == 0 || vcDedupe(fmt.Sprintf("start:%d", chatID)) {
 		return
 	}
+	markVCQuiet(chatID)
 	sendGroupNotice(chatID, "<blockquote><b>"+smallcaps("voice chat started")+" 🥀</b></blockquote>")
 }
 
@@ -86,6 +114,7 @@ func announceVCEnded(chatID int64) {
 	if chatID == 0 || vcDedupe(fmt.Sprintf("end:%d", chatID)) {
 		return
 	}
+	markVCQuiet(chatID)
 	sendGroupNotice(chatID, "<blockquote><b>"+smallcaps("voice chat ended.")+"🥀</b></blockquote>")
 }
 
@@ -112,6 +141,7 @@ func announceVCInvite(chatID, byID int64, toIDs []int64) {
 	if vcDedupe(fmt.Sprintf("inv:%d:%d:%v", chatID, byID, toIDs)) {
 		return
 	}
+	markVCQuiet(chatID)
 	var invited []string
 	for _, id := range toIDs {
 		if id != 0 && id != byID {
@@ -147,16 +177,25 @@ func idsFromAction(v any, skip int64) []int64 {
 }
 
 func handleVoiceChatService(m *telegram.NewMessage) {
-	if m == nil || m.IsPrivate() || m.Action == nil {
+	if m == nil || m.IsPrivate() {
+		return
+	}
+	action := m.Action
+	if action == nil && m.Message != nil {
+		action = m.Message.Action
+	}
+	kind := strings.ToLower(serviceBlob(m))
+	if action == nil && !strings.Contains(kind, "video chat") && !strings.Contains(kind, "voice chat") && !strings.Contains(kind, "groupcall") {
 		return
 	}
 	chatID := m.ChatID()
 	if id := m.ChannelID(); id != 0 {
 		chatID = id
 	}
-	kind := strings.ToLower(fmt.Sprintf("%T %v", m.Action, m.Action))
+	chatID = canonChatID(chatID)
 	log.Println("vc service", kind)
-	switch a := m.Action.(type) {
+	rememberCallChat(action, chatID)
+	switch a := action.(type) {
 	case *telegram.MessageActionGroupCall:
 		if a.Duration > 0 {
 			announceVCEnded(chatID)
@@ -169,11 +208,13 @@ func handleVoiceChatService(m *telegram.NewMessage) {
 		if len(ids) == 0 {
 			ids = idsFromAction(a, userIDOf(m))
 		}
+		markVCQuiet(chatID)
 		announceVCInvite(chatID, userIDOf(m), ids)
 		return
 	}
-	if strings.Contains(kind, "invite") && strings.Contains(kind, "call") {
-		announceVCInvite(chatID, userIDOf(m), idsFromAction(m.Action, userIDOf(m)))
+	if strings.Contains(kind, "invite") && (strings.Contains(kind, "call") || strings.Contains(kind, "video chat") || strings.Contains(kind, "voice chat")) {
+		markVCQuiet(chatID)
+		announceVCInvite(chatID, userIDOf(m), idsFromAction(action, userIDOf(m)))
 		return
 	}
 	if strings.Contains(kind, "groupcall") && !strings.Contains(kind, "scheduled") {
@@ -181,6 +222,34 @@ func handleVoiceChatService(m *telegram.NewMessage) {
 			announceVCEnded(chatID)
 		} else {
 			announceVCStarted(chatID)
+		}
+	}
+}
+
+func serviceBlob(m *telegram.NewMessage) string {
+	if m == nil {
+		return ""
+	}
+	parts := []string{m.Text()}
+	if m.Action != nil {
+		parts = append(parts, fmt.Sprintf("%T %v", m.Action, m.Action))
+	}
+	if m.Message != nil && m.Message.Action != nil {
+		parts = append(parts, fmt.Sprintf("%T %v", m.Message.Action, m.Message.Action))
+	}
+	return strings.ToLower(strings.Join(parts, " "))
+}
+
+func rememberCallChat(action any, chatID int64) {
+	if action == nil || chatID == 0 {
+		return
+	}
+	s := fmt.Sprintf("%v", action)
+	for _, m := range reVCUser.FindAllStringSubmatch(s, 4) {
+		var id int64
+		fmt.Sscanf(m[1], "%d", &id)
+		if id > 0 {
+			vcCallChat.Store(id, canonChatID(chatID))
 		}
 	}
 }
@@ -195,6 +264,9 @@ func peerToChatID(p telegram.Peer) int64 {
 	case *telegram.PeerChat:
 		return -x.ChatID
 	}
+	if id := channelIDFromUpdate(fmt.Sprintf("%T %v", p, p)); id != 0 {
+		return canonChatID(-1000000000000 - id)
+	}
 	return 0
 }
 
@@ -205,9 +277,12 @@ func handleRawGroupCall(u telegram.Update, c *telegram.Client) error {
 	}
 	chatID := peerToChatID(upd.Peer)
 	log.Println("vc raw call", fmt.Sprintf("%T", upd.Call), "chat", chatID)
+	if chatID == 0 {
+		chatID = chatFromCall(upd.Call)
+	}
 	if discarded, ok := upd.Call.(*telegram.GroupCallDiscarded); ok && discarded != nil {
 		if chatID == 0 {
-			if v, ok := vcActive.Load(discarded.ID); ok {
+			if v, ok := vcCallChat.Load(discarded.ID); ok {
 				if id, ok := v.(int64); ok {
 					chatID = id
 				}
@@ -222,6 +297,7 @@ func handleRawGroupCall(u telegram.Update, c *telegram.Client) error {
 		return nil
 	}
 	if chatID != 0 {
+		rememberCallChat(upd.Call, chatID)
 		if _, exists := vcActive.Load(chatID); exists {
 			return nil
 		}
@@ -229,6 +305,22 @@ func handleRawGroupCall(u telegram.Update, c *telegram.Client) error {
 	}
 	announceVCStarted(chatID)
 	return nil
+}
+
+func chatFromCall(call any) int64 {
+	if call == nil {
+		return 0
+	}
+	for _, m := range reVCUser.FindAllStringSubmatch(fmt.Sprintf("%v", call), 6) {
+		var id int64
+		fmt.Sscanf(m[1], "%d", &id)
+		if v, ok := vcCallChat.Load(id); ok {
+			if chat, ok := v.(int64); ok && chat != 0 {
+				return chat
+			}
+		}
+	}
+	return 0
 }
 
 func handleRawChannelMessage(u telegram.Update, c *telegram.Client) error {
@@ -241,7 +333,14 @@ func handleRawChannelMessage(u telegram.Update, c *telegram.Client) error {
 		return nil
 	}
 	log.Println("vc raw channel message", kind)
-	chatID := canonChatID(-1000000000000 - channelIDFromUpdate(kind))
+	rawID := channelIDFromUpdate(kind)
+	chatID := int64(0)
+	if rawID != 0 {
+		chatID = canonChatID(-1000000000000 - rawID)
+	}
+	if chatID == 0 {
+		chatID = chatFromCall(upd.Message)
+	}
 	if strings.Contains(kind, "invitetogroupcall") || (strings.Contains(kind, "invite") && strings.Contains(kind, "call")) {
 		announceVCInvite(chatID, 0, idsFromAction(upd.Message, 0))
 		return nil
@@ -257,5 +356,10 @@ func handleRawChannelMessage(u telegram.Update, c *telegram.Client) error {
 }
 
 func channelIDFromUpdate(s string) int64 {
+	if m := reChanID.FindStringSubmatch(s); len(m) == 2 {
+		var id int64
+		fmt.Sscanf(m[1], "%d", &id)
+		return id
+	}
 	return 0
 }

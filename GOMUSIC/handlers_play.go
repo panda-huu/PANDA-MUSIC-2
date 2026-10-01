@@ -29,15 +29,22 @@ func cmdRoot(m *telegram.NewMessage) string {
 func handlePlay(m *telegram.NewMessage) error  { return processPlayCommand(m, false) }
 func handleVPlay(m *telegram.NewMessage) error { return processPlayCommand(m, true) }
 
+func isVideoCmd(root string) bool {
+	return root == "vplay" || root == "vplya" || strings.HasPrefix(root, "vplay")
+}
+
 func processPlayCommand(m *telegram.NewMessage, video bool) error {
 	root := cmdRoot(m)
-	if video && root != "vplay" {
+	if video && !isVideoCmd(root) {
 		return nil
 	}
 	if !video && root != "play" {
 		return nil
 	}
 	if blocked(m) || m.IsPrivate() {
+		return nil
+	}
+	if !claimPlay(m) {
 		return nil
 	}
 	chatID := m.ChatID()
@@ -51,7 +58,7 @@ func processPlayCommand(m *telegram.NewMessage, video bool) error {
 	lastCmd[chatID] = time.Now()
 	if query == "" {
 		var pm *telegram.NewMessage
-		if m.IsReply() || m.IsMedia() {
+		if playableMessage(m) || replyMsgID(m) != 0 {
 			pm, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("downloading...")), nil)
 		}
 		song, why := songFromReply(m, video)
@@ -66,9 +73,9 @@ func processPlayCommand(m *telegram.NewMessage, video bool) error {
 			_, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps(why)), nil)
 			return nil
 		}
-		usage := "<code>/play song name</code> or reply to an audio file"
+		usage := "<code>/play</code> " + smallcaps("reply to audio or put it on the file")
 		if video {
-			usage = "<code>/vplay song name</code> or reply to a video"
+			usage = "<code>/vplay</code> " + smallcaps("reply to video or put it on the file")
 		}
 		_, _ = sendHTML(Bot, chatID, richHeading("usage", 3)+richNote(usage), nil)
 		return nil
