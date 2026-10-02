@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -73,7 +74,7 @@ func playSongOpt(chatID int64, message *telegram.NewMessage, song Song, stayInCa
 	src, err := downloadWithRetry(song.URL, song.Video)
 	if err != nil {
 		removeFromQueue(chatID, 0)
-		_, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("download failed")+"\n<code>"+richEsc(err.Error())+"</code>"), nil)
+		_, _ = sendHTML(Bot, chatID, userFail("download failed", err), nil)
 		return err
 	}
 	if src.File != "" && !isHTTP(src.File) && song.Video && !fileHasVideo(src.File) {
@@ -112,7 +113,7 @@ func playSongOpt(chatID int64, message *telegram.NewMessage, song Song, stayInCa
 	}
 	startErr := ntgPlay(chatID, media, song.Video)
 	if startErr != nil {
-		_, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("playback failed")+"\n<code>"+richEsc(startErr.Error())+"</code>"), nil)
+		_, _ = sendHTML(Bot, chatID, userFail("playback failed", startErr), nil)
 		return startErr
 	}
 
@@ -178,4 +179,23 @@ func updateProgress(chatID int64, msg *telegram.NewMessage, start time.Time, tot
 			return
 		}
 	}
+}
+
+func userFail(title string, err error) string {
+	reason := "try again in a moment"
+	msg := ""
+	if err != nil {
+		msg = strings.ToLower(err.Error())
+	}
+	switch {
+	case strings.Contains(msg, "page needs to be reloaded"), strings.Contains(msg, "sign in"), strings.Contains(msg, "bot"):
+		reason = "youtube blocked this download"
+	case strings.Contains(msg, "empty api file"):
+		reason = "download came back empty"
+	case strings.Contains(msg, "audio file, not video"):
+		reason = "video file was not ready"
+	case strings.Contains(msg, "timeout"):
+		reason = "download timed out"
+	}
+	return wrapBQ(smallcaps(title) + "\n" + smallcaps(reason))
 }
