@@ -176,12 +176,11 @@ func initClients() error {
 			return
 		}
 		if info.State == ntgcalls.Timeout || info.State == ntgcalls.Failed || info.State == ntgcalls.Closed {
-			if isSwitching(chat) {
+			if isSwitching(chat) || isLiveSession(chat) {
 				return
 			}
 			song := peekCurrent(chat)
 			if song == nil {
-				leaveVCNow(chat)
 				return
 			}
 			log.Println("mid-stream disconnect, auto-reconnecting", chat, info.State)

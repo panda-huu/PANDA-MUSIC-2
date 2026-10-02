@@ -154,12 +154,6 @@ func processPlay(m *telegram.NewMessage, query string, video bool) error {
 		return nil
 	}
 	song := Song{URL: urlStr, Title: title, Duration: isoToHuman(durISO), DurationSeconds: parseDur(durISO), Requester: req, RequesterID: reqID, Thumbnail: thumb, Video: video}
-	if !already {
-		if err := preparePlaybackCall(chatID, video); err != nil {
-			_ = editHTML(pm, wrapBQ(smallcaps("assistant VC join failed")+"\n<code>"+richEsc(err.Error())+"</code>"), nil)
-			return nil
-		}
-	}
 	return RoomPlay(chatID, song, false, pm)
 }
 
@@ -297,7 +291,6 @@ func exportInviteLink(chatID int64) (string, error) {
 
 func warmPlay(chatID int64) {
 	_ = promoteAssistant(chatID)
-	_ = ensureVC(chatID)
 }
 
 func promoteAssistant(chatID int64) error {
