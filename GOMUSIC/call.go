@@ -369,7 +369,7 @@ func joinExistingCall(chatID int64, media ntgcalls.MediaDescription, video bool)
 					}
 				} else {
 					last = err
-					time.Sleep(time.Duration(attempt) * 400 * time.Millisecond)
+					time.Sleep(120 * time.Millisecond)
 					continue
 				}
 			} else {
@@ -387,7 +387,7 @@ func joinExistingCall(chatID int64, media ntgcalls.MediaDescription, video bool)
 		if err := Calls.SetStreamSources(chatID, ntgcalls.CaptureStream, joinMedia); err != nil {
 			last = err
 			resetLocalCall(chatID)
-			time.Sleep(time.Duration(attempt) * 400 * time.Millisecond)
+			time.Sleep(120 * time.Millisecond)
 			continue
 		}
 
@@ -400,13 +400,13 @@ func joinExistingCall(chatID int64, media ntgcalls.MediaDescription, video bool)
 		if err != nil {
 			if e := ensureVC(chatID); e != nil {
 				last = e
-				time.Sleep(time.Duration(attempt) * time.Second)
+				time.Sleep(250 * time.Millisecond)
 				continue
 			}
 			inputCall, err = fetchLiveCall(chatID)
 			if err != nil {
 				last = err
-				time.Sleep(time.Duration(attempt) * time.Second)
+				time.Sleep(250 * time.Millisecond)
 				continue
 			}
 		}
@@ -432,7 +432,7 @@ func joinExistingCall(chatID int64, media ntgcalls.MediaDescription, video bool)
 				log.Println("join retry", attempt, chatID, err)
 				clearCallCache(chatID)
 				resetLocalCall(chatID)
-				time.Sleep(time.Duration(attempt) * 800 * time.Millisecond)
+				time.Sleep(200 * time.Millisecond)
 				continue
 			}
 			return err
@@ -450,11 +450,11 @@ func joinExistingCall(chatID int64, media ntgcalls.MediaDescription, video bool)
 			last = err
 			log.Println("ntg connect timeout/retry", attempt, chatID, err)
 			resetLocalCall(chatID)
-			time.Sleep(time.Duration(attempt) * time.Second)
+			time.Sleep(250 * time.Millisecond)
 			continue
 		}
 		if video && media.Camera != nil {
-			time.Sleep(400 * time.Millisecond)
+			time.Sleep(120 * time.Millisecond)
 			if err := Calls.SetStreamSources(chatID, ntgcalls.CaptureStream, media); err != nil {
 				log.Println("video upgrade after connect:", err)
 			}

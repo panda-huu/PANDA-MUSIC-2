@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -348,4 +349,50 @@ func deleteFile(path string) {
 	if path != "" && !isHTTP(path) {
 		_ = os.Remove(path)
 	}
+}
+
+type prefetchResult struct {
+	src streamSrc
+	err error
+}
+
+var prefetchMu sync.Mutex
+var prefetching = map[string]chan prefetchResult{}
+
+func prefetchKey(raw string, video bool) string {
+	if video {
+		return raw + "|v"
+	}
+	return raw + "|a"
+}
+
+func startPrefetch(raw string, video bool) {
+	key := prefetchKey(raw, video)
+	prefetchMu.Lock()
+	if _, ok := prefetching[key]; ok {
+		prefetchMu.Unlock()
+		return
+	}
+	ch := make(chan prefetchResult, 1)
+	prefetching[key] = ch
+	prefetchMu.Unlock()
+	go func() {
+		src, err := downloadWithRetry(raw, video)
+		ch <- prefetchResult{src, err}
+	}()
+}
+
+func takePrefetch(raw string, video bool) (streamSrc, error) {
+	key := prefetchKey(raw, video)
+	prefetchMu.Lock()
+	ch := prefetching[key]
+	if ch != nil {
+		delete(prefetching, key)
+	}
+	prefetchMu.Unlock()
+	if ch == nil {
+		return streamSrc{}, fmt.Errorf("no prefetch")
+	}
+	res := <-ch
+	return res.src, res.err
 }

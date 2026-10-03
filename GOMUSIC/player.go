@@ -71,7 +71,10 @@ func playSongOpt(chatID int64, message *telegram.NewMessage, song Song, stayInCa
 	setSeekState(chatID, 0)
 	apMarkPlayed(chatID, extractVideoID(song.URL))
 
-	src, err := downloadWithRetry(song.URL, song.Video)
+	src, err := takePrefetch(song.URL, song.Video)
+	if err != nil {
+		src, err = downloadWithRetry(song.URL, song.Video)
+	}
 	if err != nil {
 		removeFromQueue(chatID, 0)
 		_, _ = sendHTML(Bot, chatID, userFail("download failed", err), nil)
@@ -88,13 +91,15 @@ func playSongOpt(chatID int64, message *telegram.NewMessage, song Song, stayInCa
 		}
 	}
 	if src.File != "" && !isHTTP(src.File) {
-		if secs := probeDuration(src.File); secs > 1 {
-			song.DurationSeconds = int(secs)
-			song.Duration = formatClock(secs)
-		} else if song.DurationSeconds > 1 && (song.Duration == "" || song.Duration == "0:00") {
+		if song.DurationSeconds > 1 && (song.Duration == "" || song.Duration == "0:00") {
 			song.Duration = formatClock(float64(song.DurationSeconds))
 		}
 		setCurrentDuration(chatID, song)
+		go func(path string, id int64) {
+			if secs := probeDuration(path); secs > 1 {
+				setCurrentDuration(id, Song{DurationSeconds: int(secs), Duration: formatClock(secs)})
+			}
+		}(src.File, chatID)
 	}
 	playPath := src.File
 	if playPath == "" {

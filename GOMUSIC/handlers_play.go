@@ -154,6 +154,9 @@ func processPlay(m *telegram.NewMessage, query string, video bool) error {
 		return nil
 	}
 	song := Song{URL: urlStr, Title: title, Duration: isoToHuman(durISO), DurationSeconds: parseDur(durISO), Requester: req, RequesterID: reqID, Thumbnail: thumb, Video: video}
+	if !already {
+		startPrefetch(song.URL, video)
+	}
 	return RoomPlay(chatID, song, false, pm)
 }
 
