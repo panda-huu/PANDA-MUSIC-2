@@ -75,7 +75,7 @@ func GetStartMarkup() [][]InlineBtn {
 		{styleBtn(btnAbout, "about_menu", ColourBlue), styleBtn(btnHelpStart, "help_cb", ColourGreen)},
 		{styleURLBtn(btnUpdates, UpdatesChannel, ColourBlue), styleURLBtn(btnSupport, SupportGroup, ColourGreen)},
 		{styleURLBtn(btnSource, ownerURL(), ColourRed)},
-		{styleWebAppBtn("ᴡᴇʙ ᴍᴜsɪᴄ", "https://xmusic-jade.vercel.app", ColourBlue)},
+		{styleURLBtn("ᴡᴇʙ ᴍᴜsɪᴄ", strings.TrimRight(BotLink, "/")+"/xmusic", ColourBlue)},
 	}
 }
 
