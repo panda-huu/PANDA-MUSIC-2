@@ -259,16 +259,6 @@ func assistantInput() (*telegram.InputUserObj, error) {
 	return &telegram.InputUserObj{UserID: me.ID, AccessHash: me.AccessHash}, nil
 }
 
-func inviteHashFromLink(link string) string {
-	link = strings.TrimSpace(link)
-	for _, p := range []string{"https://t.me/+", "http://t.me/+", "https://telegram.me/+", "https://t.me/joinchat/", "http://t.me/joinchat/", "t.me/+", "t.me/joinchat/"} {
-		if strings.HasPrefix(strings.ToLower(link), strings.ToLower(p)) {
-			return strings.Trim(link[len(p):], "/")
-		}
-	}
-	return link
-}
-
 func exportInviteLink(chatID int64) (string, error) {
 	var last error
 	for _, id := range chatIDForms(chatID) {
@@ -369,6 +359,12 @@ func inviteAssistantViaBot(chatID int64) error {
 	return last
 }
 
+// tryJoinAssistant attempts to get the assistant into the group via three
+// escalating strategies:
+//  1. Direct invite by bot (MessagesAddChatUser / ChannelsInviteToChannel)
+//  2. Export a fresh invite link and let the assistant join it via JoinChannel
+//     (gogram already calls ImportChatInvite internally — no duplicate call)
+//  3. Final membership check; if already in, accept it silently
 func tryJoinAssistant(chatID int64, pm *telegram.NewMessage) bool {
 	if ok, banned := assistantIn(chatID); banned {
 		_ = editHTML(pm, wrapBQ(smallcaps("assistant banned")+"\n"+smallcaps("unban")+" @"+assistantUsername), nil)
@@ -378,32 +374,31 @@ func tryJoinAssistant(chatID int64, pm *telegram.NewMessage) bool {
 		return true
 	}
 
+	// Strategy 1: bot directly invites the assistant
 	inviteErr := withFloodWait(func() error { return inviteAssistantViaBot(chatID) })
 	if inviteErr == nil {
 		_ = promoteAssistant(chatID)
 		return true
 	}
 
-	link, err := exportInviteLink(chatID)
-	if err == nil && link != "" {
-		hash := inviteHashFromLink(link)
+	// Strategy 2: export a fresh link and let the assistant join it
+	// JoinChannel handles ImportChatInvite internally; calling
+	// MessagesImportChatInvite separately on the same hash causes
+	// INVITE_HASH_EXPIRED on the second attempt, so we skip it.
+	link, linkErr := exportInviteLink(chatID)
+	if linkErr == nil && link != "" {
 		joinErr := withFloodWait(func() error {
 			_, e := Assistant.JoinChannel(link)
 			return e
 		})
-		if joinErr != nil && hash != "" {
-			joinErr = withFloodWait(func() error {
-				_, e := Assistant.MessagesImportChatInvite(hash)
-				return e
-			})
-		}
-		if joinErr == nil {
-				_ = promoteAssistant(chatID)
+		if joinErr == nil || alreadyMemberErr(joinErr) {
+			_ = promoteAssistant(chatID)
 			return true
 		}
 		inviteErr = joinErr
 	}
 
+	// Strategy 3: maybe it got in despite the error
 	if ok, _ := assistantIn(chatID); ok {
 		_ = promoteAssistant(chatID)
 		return true
