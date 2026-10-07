@@ -58,6 +58,12 @@ func thumbFor(raw, existing string) string {
 	return ""
 }
 
+// thumbClient is a package-level HTTP client reused for thumbnail fetches.
+// A single shared client avoids the cost of creating one per call and
+// prevents the file-descriptor leak that a per-call client can cause when
+// many goroutines fetch thumbnails concurrently.
+var thumbClient = &http.Client{Timeout: 20 * time.Second}
+
 func cacheThumb(src string) string {
 	if src == "" {
 		return ""
@@ -75,9 +81,11 @@ func cacheThumb(src string) string {
 	if st, err := os.Stat(dest); err == nil && st.Size() > 0 {
 		return dest
 	}
-	client := &http.Client{Timeout: 20 * time.Second}
-	resp, err := client.Get(src)
+	resp, err := thumbClient.Get(src)
 	if err != nil {
+		return src
+	}
+	if resp == nil {
 		return src
 	}
 	defer resp.Body.Close()
@@ -332,9 +340,6 @@ func downloadViaAPI(videoID, typ, dest string) (string, error) {
 			log.Printf("download API quality=%s failed: %v", q, err)
 			lastErr = err
 			_ = os.Remove(dest)
-			// If the video has no available formats at all, bail out immediately.
-			// Trying lower qualities won't help — yt-dlp can't download what YouTube
-			// doesn't provide, and we'd just spam the API for nothing.
 			if isFormatUnavailable(err) {
 				return "", fmt.Errorf("video unavailable: no downloadable format found")
 			}
@@ -342,7 +347,6 @@ func downloadViaAPI(videoID, typ, dest string) (string, error) {
 		return "", lastErr
 	}
 
-	// Audio path — unchanged.
 	u, _ := url.Parse(api + "/download")
 	qv := u.Query()
 	qv.Set("url", full)
@@ -354,12 +358,14 @@ func downloadViaAPI(videoID, typ, dest string) (string, error) {
 	return doAPIDownload(u.String(), dest)
 }
 
-// doAPIDownload performs one GET to the download API and saves the body to dest.
 func doAPIDownload(apiURL, dest string) (string, error) {
 	client := &http.Client{Timeout: 15 * time.Minute}
 	resp, err := client.Get(apiURL)
 	if err != nil {
 		return "", err
+	}
+	if resp == nil {
+		return "", fmt.Errorf("nil response from API")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {

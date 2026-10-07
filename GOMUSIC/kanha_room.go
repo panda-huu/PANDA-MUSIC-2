@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/amarnathcjd/gogram/telegram"
 	"github.com/nikhil390u8o/GOMUSICV2/ntgcalls"
@@ -11,9 +12,6 @@ func RoomPlay(chatID int64, song Song, force bool, msg *telegram.NewMessage) err
 	unlock := lockChatPlay(chatID)
 	defer unlock()
 
-	// A connected/pre-joined VC is not the same as active playback. The current
-	// track is represented by queue[0], so only an existing queue should force
-	// a new request into the queue.
 	if !force && queueSize(chatID) > 0 {
 		pos := addToQueue(chatID, song)
 		body := incomingTrackHTML(pos-1, song)
@@ -40,6 +38,21 @@ func RoomNextTrack(chatID int64) *Song {
 	return peekCurrent(chatID)
 }
 
+// isPermanentDownloadErr reports whether an error means the track can never
+// be downloaded regardless of how many times we retry — so we should skip
+// it immediately instead of burning through attempts.
+func isPermanentDownloadErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no downloadable format") ||
+		strings.Contains(msg, "format is not available") ||
+		strings.Contains(msg, "video unavailable") ||
+		strings.Contains(msg, "private video") ||
+		strings.Contains(msg, "has been removed")
+}
+
 func RoomChangeStream(chatID int64) error {
 	holdSwitch(chatID)
 	nxt := RoomNextTrack(chatID)
@@ -59,6 +72,19 @@ func RoomChangeStream(chatID int64) error {
 		if last == nil {
 			releaseSwitch(chatID)
 			return nil
+		}
+		// Permanent failures (format unavailable, deleted video, etc.) — skip
+		// this track immediately instead of retrying the same dead URL.
+		if isPermanentDownloadErr(last) {
+			_ = popCurrent(chatID)
+			nxt = peekCurrent(chatID)
+			if nxt == nil {
+				nxt = takeAutoplayNext(chatID)
+			}
+			if nxt == nil {
+				break
+			}
+			continue
 		}
 		if next := takeAutoplayNext(chatID); next != nil {
 			nxt = next
