@@ -120,7 +120,7 @@ func GetNowPlayingMarkup(bar string, autoplayOn bool) [][]InlineBtn {
 			styleBtn("‣‣I", "skip", ColourGreen),
 			styleBtn("▢", "stop", ColourRed),
 		},
-		{styleBtn(btnSeekBack, "seek_back", ColourBlue), styleWebAppBtn("ᴡᴇʙ ᴍᴜsɪᴄ", "https://xmusic-jade.vercel.app", ColourGreen), styleBtn(btnSeekFwd, "seek_fwd", ColourGreen)},
+		{styleBtn(btnSeekBack, "seek_back", ColourBlue), styleURLBtn("ᴡᴇʙ ᴍᴜsɪᴄ", "https://xmusic-jade.vercel.app", ColourGreen), styleBtn(btnSeekFwd, "seek_fwd", ColourGreen)},
 		{styleBtn(autoplayBtnText(autoplayOn), "autoplay_toggle", ColourBlue)},
 		{styleBtn(btnClose, "close", ColourRed)},
 	}
