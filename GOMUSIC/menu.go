@@ -38,7 +38,9 @@ func gogramMarkup(rows [][]InlineBtn) telegram.ReplyMarkup {
 		btns := make([]telegram.KeyboardInlineButton, 0, len(row))
 		for _, b := range row {
 			var btn telegram.KeyboardInlineButton
-			if b.URL != "" {
+			if b.WebApp != "" {
+				btn = telegram.Button.WebView(b.Text, b.WebApp)
+			} else if b.URL != "" {
 				btn = telegram.Button.URL(b.Text, b.URL)
 			} else {
 				btn = telegram.Button.Data(b.Text, b.Data)
