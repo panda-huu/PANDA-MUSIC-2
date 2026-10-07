@@ -15,6 +15,7 @@ type InlineBtn struct {
 	Text   string
 	Data   string
 	URL    string
+	WebApp string
 	Colour string
 }
 
@@ -51,6 +52,10 @@ func styleURLBtn(text, url, colour string) InlineBtn {
 	return b
 }
 
+func styleWebAppBtn(text, url, colour string) InlineBtn {
+	return InlineBtn{Text: text, WebApp: url, Colour: colour}
+}
+
 func DataBtn(text, cb string) InlineBtn { return dataBtn(text, cb) }
 func UrlBtn(text, url string) InlineBtn { return urlBtn(text, url) }
 
@@ -70,6 +75,7 @@ func GetStartMarkup() [][]InlineBtn {
 		{styleBtn(btnAbout, "about_menu", ColourBlue), styleBtn(btnHelpStart, "help_cb", ColourGreen)},
 		{styleURLBtn(btnUpdates, UpdatesChannel, ColourBlue), styleURLBtn(btnSupport, SupportGroup, ColourGreen)},
 		{styleURLBtn(btnSource, ownerURL(), ColourRed)},
+		{styleWebAppBtn("ᴡᴇʙ ᴍᴜsɪᴄ", "https://xmusic-jade.vercel.app", ColourBlue)},
 	}
 }
 
@@ -114,7 +120,7 @@ func GetNowPlayingMarkup(bar string, autoplayOn bool) [][]InlineBtn {
 			styleBtn("‣‣I", "skip", ColourGreen),
 			styleBtn("▢", "stop", ColourRed),
 		},
-		{styleBtn(btnSeekBack, "seek_back", ColourBlue), styleBtn(btnSeekFwd, "seek_fwd", ColourGreen)},
+		{styleBtn(btnSeekBack, "seek_back", ColourBlue), styleWebAppBtn("ᴡᴇʙ ᴍᴜsɪᴄ", "https://xmusic-jade.vercel.app", ColourGreen), styleBtn(btnSeekFwd, "seek_fwd", ColourGreen)},
 		{styleBtn(autoplayBtnText(autoplayOn), "autoplay_toggle", ColourBlue)},
 		{styleBtn(btnClose, "close", ColourRed)},
 	}
