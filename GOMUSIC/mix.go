@@ -203,6 +203,10 @@ func downloadWithRetry(raw string, video bool) (streamSrc, error) {
 			return src, nil
 		}
 		last = err
+		// Format unavailable = permanent failure, no point retrying.
+		if isFormatUnavailable(err) {
+			break
+		}
 	}
 	if last == nil {
 		last = fmt.Errorf("download failed")

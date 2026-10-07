@@ -288,9 +288,20 @@ func resolveStream(raw string, video bool) (string, error) {
 	return path, nil
 }
 
-// videoQualityFallbacks are tried in order when the API returns a non-200 for
-// video downloads. Lower qualities are more universally available.
-var videoQualityFallbacks = []string{"360", "240", "144", "worst"}
+// videoQualityFallbacks tried in order for video downloads.
+// "worst" removed — the API rejects it with 400 (quality must be between 144 and 1080).
+var videoQualityFallbacks = []string{"360", "240", "144"}
+
+// isFormatUnavailable reports whether the API error means the video has no
+// available format at all — so retrying other qualities is pointless.
+func isFormatUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "requested format is not available") ||
+		strings.Contains(msg, "format is not available")
+}
 
 func downloadViaAPI(videoID, typ, dest string) (string, error) {
 	api := strings.TrimRight(AruYTAPI, "/")
@@ -304,7 +315,6 @@ func downloadViaAPI(videoID, typ, dest string) (string, error) {
 	full := "https://www.youtube.com/watch?v=" + videoID
 
 	if typ == "video" {
-		// Try quality fallbacks so a missing 360p format doesn't hard-fail.
 		var lastErr error
 		for _, q := range videoQualityFallbacks {
 			u, _ := url.Parse(api + "/download")
@@ -321,8 +331,13 @@ func downloadViaAPI(videoID, typ, dest string) (string, error) {
 			}
 			log.Printf("download API quality=%s failed: %v", q, err)
 			lastErr = err
-			// Remove partial file so next attempt writes clean.
 			_ = os.Remove(dest)
+			// If the video has no available formats at all, bail out immediately.
+			// Trying lower qualities won't help — yt-dlp can't download what YouTube
+			// doesn't provide, and we'd just spam the API for nothing.
+			if isFormatUnavailable(err) {
+				return "", fmt.Errorf("video unavailable: no downloadable format found")
+			}
 		}
 		return "", lastErr
 	}
