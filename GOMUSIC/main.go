@@ -41,14 +41,60 @@ func main() {
 		}
 	}()
 
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sig
+		log.Println("GOMUSICV2 stopped")
+		if Bot != nil {
+			Bot.Stop()
+		}
+		if Assistant != nil {
+			Assistant.Stop()
+		}
+		if Calls != nil {
+			Calls.Close()
+		}
+		os.Exit(0)
+	}()
+
+	for {
+		if err := runBot(); err != nil {
+			log.Printf("bot crashed: %v — restarting in 3s\n", err)
+			// clean up stale client state before restart
+			if Calls != nil {
+				Calls.Close()
+				Calls = nil
+			}
+			Bot = nil
+			Assistant = nil
+			cachedAssistant = nil
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		// clean exit (signal) — break
+		break
+	}
+}
+
+// runBot initialises clients, registers handlers, and blocks on Bot.Idle().
+// Any panic from gogram's internal goroutines is caught here and returned
+// as an error so the outer loop in main() can restart cleanly.
+func runBot() (retErr error) {
+	defer func() {
+		if r := recover(); r != nil {
+			retErr = fmt.Errorf("panic: %v", r)
+		}
+	}()
+
 	if err := initClients(); err != nil {
-		log.Fatal("client start failed:", err)
+		return fmt.Errorf("client start failed: %w", err)
 	}
 	log.Println("Bot client started")
 
 	me, err := retryGetMe(Bot, 5)
 	if err != nil {
-		log.Fatal("bot GetMe failed:", err)
+		return fmt.Errorf("bot GetMe failed: %w", err)
 	}
 	log.Printf("Bot: @%s\n", me.Username)
 	setBotCommands()
@@ -73,24 +119,8 @@ func main() {
 		log.Println("GOMUSICV2 is ready for commands")
 	}()
 
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sig
-		log.Println("GOMUSICV2 stopped")
-		if Bot != nil {
-			Bot.Stop()
-		}
-		if Assistant != nil {
-			Assistant.Stop()
-		}
-		if Calls != nil {
-			Calls.Close()
-		}
-		os.Exit(0)
-	}()
-
 	Bot.Idle()
+	return nil
 }
 
 func retryGetMe(c *telegram.Client, tries int) (*telegram.UserObj, error) {
