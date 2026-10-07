@@ -288,6 +288,10 @@ func resolveStream(raw string, video bool) (string, error) {
 	return path, nil
 }
 
+// videoQualityFallbacks are tried in order when the API returns a non-200 for
+// video downloads. Lower qualities are more universally available.
+var videoQualityFallbacks = []string{"360", "240", "144", "worst"}
+
 func downloadViaAPI(videoID, typ, dest string) (string, error) {
 	api := strings.TrimRight(AruYTAPI, "/")
 	key := strings.TrimSpace(AruAPIKey)
@@ -298,20 +302,47 @@ func downloadViaAPI(videoID, typ, dest string) (string, error) {
 		key = "PANDA"
 	}
 	full := "https://www.youtube.com/watch?v=" + videoID
-	u, _ := url.Parse(api + "/download")
-	q := u.Query()
-	q.Set("url", full)
-	q.Set("type", typ)
-	q.Set("api_key", key)
+
 	if typ == "video" {
-		q.Set("quality", "360")
-	} else {
-		q.Set("format", "m4a")
+		// Try quality fallbacks so a missing 360p format doesn't hard-fail.
+		var lastErr error
+		for _, q := range videoQualityFallbacks {
+			u, _ := url.Parse(api + "/download")
+			qv := u.Query()
+			qv.Set("url", full)
+			qv.Set("type", "video")
+			qv.Set("quality", q)
+			qv.Set("api_key", key)
+			u.RawQuery = qv.Encode()
+			log.Printf("download API request %s type=video quality=%s", api+"/download", q)
+			path, err := doAPIDownload(u.String(), dest)
+			if err == nil {
+				return path, nil
+			}
+			log.Printf("download API quality=%s failed: %v", q, err)
+			lastErr = err
+			// Remove partial file so next attempt writes clean.
+			_ = os.Remove(dest)
+		}
+		return "", lastErr
 	}
-	u.RawQuery = q.Encode()
-	log.Printf("download API request %s type=%s", api+"/download", typ)
+
+	// Audio path — unchanged.
+	u, _ := url.Parse(api + "/download")
+	qv := u.Query()
+	qv.Set("url", full)
+	qv.Set("type", "audio")
+	qv.Set("format", "m4a")
+	qv.Set("api_key", key)
+	u.RawQuery = qv.Encode()
+	log.Printf("download API request %s type=audio", api+"/download")
+	return doAPIDownload(u.String(), dest)
+}
+
+// doAPIDownload performs one GET to the download API and saves the body to dest.
+func doAPIDownload(apiURL, dest string) (string, error) {
 	client := &http.Client{Timeout: 15 * time.Minute}
-	resp, err := client.Get(u.String())
+	resp, err := client.Get(apiURL)
 	if err != nil {
 		return "", err
 	}
@@ -321,7 +352,7 @@ func downloadViaAPI(videoID, typ, dest string) (string, error) {
 		return "", fmt.Errorf("API HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	ct := strings.ToLower(resp.Header.Get("Content-Type"))
-	if typ == "video" && strings.HasPrefix(ct, "audio/") {
+	if strings.Contains(apiURL, "type=video") && strings.HasPrefix(ct, "audio/") {
 		io.Copy(io.Discard, resp.Body)
 		return "", fmt.Errorf("API gave audio file, not video stream")
 	}
@@ -345,6 +376,7 @@ func downloadViaAPI(videoID, typ, dest string) (string, error) {
 	log.Printf("download API saved %s bytes=%d", dest, n)
 	return dest, nil
 }
+
 func deleteFile(path string) {
 	if path != "" && !isHTTP(path) {
 		_ = os.Remove(path)
