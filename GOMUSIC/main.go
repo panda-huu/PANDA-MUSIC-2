@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -61,8 +63,13 @@ func main() {
 
 	for {
 		if err := runBot(); err != nil {
-			log.Printf("bot crashed: %v — restarting in 3s\n", err)
-			// clean up stale client state before restart
+			wait := telegramFloodWait(err)
+			if wait > 0 {
+				log.Printf("Telegram FLOOD_WAIT detected; pausing retries for %s\\n", wait)
+			} else {
+				wait = 10 * time.Second
+				log.Printf("bot crashed: %v — retrying in %s\\n", err, wait)
+			}
 			if Calls != nil {
 				Calls.Close()
 				Calls = nil
@@ -70,7 +77,7 @@ func main() {
 			Bot = nil
 			Assistant = nil
 			cachedAssistant = nil
-			time.Sleep(3 * time.Second)
+			time.Sleep(wait)
 			continue
 		}
 		// clean exit (signal) — break
@@ -144,4 +151,21 @@ func retryGetMe(c *telegram.Client, tries int) (*telegram.UserObj, error) {
 		time.Sleep(time.Duration(i) * 2 * time.Second)
 	}
 	return nil, last
+}
+
+// telegramFloodWait extracts Telegram's server-provided FLOOD_WAIT duration.
+// Waiting prevents repeated AuthImportBotAuthorization calls during rate limits.
+func telegramFloodWait(err error) time.Duration {
+	if err == nil {
+		return 0
+	}
+	match := regexp.MustCompile(`Please wait ([0-9]+) seconds`).FindStringSubmatch(err.Error())
+	if len(match) != 2 {
+		return 0
+	}
+	seconds, parseErr := strconv.Atoi(match[1])
+	if parseErr != nil || seconds <= 0 {
+		return 0
+	}
+	return time.Duration(seconds+10) * time.Second
 }
