@@ -204,6 +204,15 @@ func leaveVCNow(chatID int64) {
 		}
 	}
 
+	// Preserve the cached Telegram call before clearing runtime state.
+	var remoteCall telegram.InputGroupCall
+	for id, call := range activeCalls {
+		if canonChatID(id) == target && call != nil {
+			remoteCall = call
+			break
+		}
+	}
+
 	// Stop every ntgcalls entry matching this Telegram group, not just the
 	// callback's chat ID representation.
 	for id := range ids {
@@ -238,13 +247,6 @@ func leaveVCNow(chatID int64) {
 
 	// The cached InputGroupCall can be missing or stale. Fetch the current
 	// Telegram call as a fallback so the assistant really leaves the VC.
-	var remoteCall telegram.InputGroupCall
-	for id, call := range activeCalls {
-		if canonChatID(id) == target && call != nil {
-			remoteCall = call
-			break
-		}
-	}
 	if remoteCall == nil && Assistant != nil {
 		if call, err := fetchLiveCall(target); err == nil {
 			remoteCall = call
