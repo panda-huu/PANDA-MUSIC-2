@@ -17,9 +17,10 @@ COPY . .
 # Downloads the matching Linux/amd64 ntgcalls 2.2.5 static archive and header.
 RUN go run setup_ntgcalls.go
 
+# Refresh checksums for all imported modules before compiling.
+RUN go mod tidy
 RUN CGO_ENABLED=1 go build -trimpath -ldflags="-w -s" -o /out/gomusic ./GOMUSIC
 
-# Runtime image: keep FFmpeg available for audio/video streams.
 FROM debian:bookworm-slim AS runtime
 ENV PORT=10000
 WORKDIR /app
