@@ -35,18 +35,41 @@ func styleWebAppBtn(text, url, colour string) InlineBtn { return InlineBtn{Text:
 func DataBtn(text, cb string) InlineBtn { return dataBtn(text,cb) }
 func UrlBtn(text, url string) InlineBtn { return urlBtn(text,url) }
 
+func normalizeTelegramURL(raw, fallback string) string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.Trim(raw, "`'<>")
+	if raw == "" {
+		return fallback
+	}
+	if strings.HasPrefix(raw, "@") {
+		raw = "https://t.me/" + strings.TrimPrefix(raw, "@")
+	} else if strings.HasPrefix(raw, "t.me/") {
+		raw = "https://" + raw
+	} else if !strings.Contains(raw, "://") && !strings.Contains(raw, "/") {
+		raw = "https://t.me/" + raw
+	}
+	if !strings.HasPrefix(raw, "https://t.me/") && !strings.HasPrefix(raw, "https://telegram.me/") {
+		return fallback
+	}
+	return raw
+}
+
 func ownerURL() string {
-	if u:=strings.TrimSpace(OwnerUsername); u!="" { return "https://t.me/"+strings.TrimPrefix(u,"@") }
-	if OwnerID!=0 { return fmt.Sprintf("https://t.me/user?id=%d",OwnerID) }
+	if u := strings.TrimSpace(OwnerUsername); u != "" {
+		return normalizeTelegramURL(u, "https://t.me/")
+	}
+	if OwnerID != 0 {
+		return fmt.Sprintf("tg://user?id=%d", OwnerID)
+	}
 	return "https://t.me/"
 }
 
 // Restore the original full /start menu layout. menu.go validates optional
 // URLs and skips only a malformed button instead of rejecting the whole menu.
 func GetStartMarkup() [][]InlineBtn {
-	updatesURL := strings.TrimSpace(UpdatesChannel)
-	supportURL := strings.TrimSpace(SupportGroup)
-	developerURL := ownerURL()
+	updatesURL := normalizeTelegramURL(UpdatesChannel, "https://t.me/sxypndu")
+	supportURL := normalizeTelegramURL(SupportGroup, "https://t.me/crzy_soul")
+	developerURL := normalizeTelegramURL(ownerURL(), "https://t.me/sxyrdhu")
 	webMusicURL := "https://t.me/RADHIKA_688U_MUSIC_BOT/xmusic"
 
 	return [][]InlineBtn{
@@ -54,7 +77,7 @@ func GetStartMarkup() [][]InlineBtn {
 		{styleBtn(btnAbout, "about_menu", ColourBlue), styleBtn(btnHelpStart, "help_cb", ColourGreen)},
 		{styleURLBtn(btnUpdates, updatesURL, ColourBlue), styleURLBtn(btnSupport, supportURL, ColourGreen)},
 		{styleURLBtn(btnSource, developerURL, ColourRed)},
-		{styleWebAppBtn("ᴡᴇʙ ᴍᴜsɪᴄ", webMusicURL, ColourBlue)},
+		{styleURLBtn("ᴡᴇʙ ᴍᴜsɪᴄ", webMusicURL, ColourBlue)},
 	}
 }
 
