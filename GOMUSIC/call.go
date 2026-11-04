@@ -115,33 +115,150 @@ func currentPath(chatID int64) string {
 }
 
 func hasLocalCall(chatID int64) bool {
-	return Calls != nil && Calls.Calls()[chatID] != nil
+	if Calls == nil {
+		return false
+	}
+	for id, call := range Calls.Calls() {
+		if call != nil && canonChatID(id) == canonChatID(chatID) {
+			return true
+		}
+	}
+	return false
 }
 
 func clearCallCache(chatID int64) {
-	delete(activeCalls, chatID)
+	target := canonChatID(chatID)
+	for id := range activeCalls {
+		if canonChatID(id) == target {
+			delete(activeCalls, id)
+		}
+	}
+}
+
+// playbackChatID finds the exact key used by the active player. Telegram
+// callbacks may provide -100... while incoming group updates can be keyed by
+// the raw channel ID. Match both representations before touching playback.
+func playbackChatID(chatID int64) int64 {
+	target := canonChatID(chatID)
+
+	connectMu.Lock()
+	for id, path := range currentPaths {
+		if path != "" && canonChatID(id) == target {
+			connectMu.Unlock()
+			return id
+		}
+	}
+	connectMu.Unlock()
+
+	queueMu.Lock()
+	for id, q := range chatQueues {
+		if len(q) > 0 && canonChatID(id) == target {
+			queueMu.Unlock()
+			return id
+		}
+	}
+	queueMu.Unlock()
+
+	if Calls != nil {
+		for id, call := range Calls.Calls() {
+			if call != nil && canonChatID(id) == target {
+				return id
+			}
+		}
+	}
+	return chatID
 }
 
 func leaveVCNow(chatID int64) {
+	target := canonChatID(chatID)
+	ids := map[int64]bool{chatID: true, target: true}
+
 	connectMu.Lock()
-	switchHold[chatID] = 0
-	delete(joinParams, chatID)
+	for id := range currentPaths {
+		if canonChatID(id) == target {
+			ids[id] = true
+		}
+	}
+	for id := range joinParams {
+		if canonChatID(id) == target {
+			ids[id] = true
+		}
+	}
 	connectMu.Unlock()
-	switching.Delete(chatID)
-	clearLiveSession(chatID)
-	bumpStream(chatID)
-	stopAutoplay(chatID)
-	for _, song := range clearQueue(chatID) {
-		deleteFile(song.FilePath)
+
+	queueMu.Lock()
+	for id := range chatQueues {
+		if canonChatID(id) == target {
+			ids[id] = true
+		}
 	}
+	queueMu.Unlock()
+
+	localCalls := map[int64]bool{}
 	if Calls != nil {
-		_ = Calls.Stop(chatID)
+		for id, info := range Calls.Calls() {
+			if info != nil && canonChatID(id) == target {
+				ids[id] = true
+				localCalls[id] = true
+			}
+		}
 	}
-	if call, ok := activeCalls[chatID]; ok {
-		_, _ = Assistant.PhoneLeaveGroupCall(call, 0)
-		delete(activeCalls, chatID)
+
+	// Stop every ntgcalls entry matching this Telegram group, not just the
+	// callback's chat ID representation.
+	for id := range ids {
+		stopAutoplay(id)
+		for _, song := range clearQueue(id) {
+			deleteFile(song.FilePath)
+		}
+		if Calls != nil && (localCalls[id] || id == chatID || id == target) {
+			if err := Calls.Stop(id); err != nil {
+				log.Printf("stop local stream chat=%d: %v", id, err)
+			}
+		}
+		setSeekState(id, 0)
+		delete(callIsVideo, id)
+		delete(activeCalls, id)
 	}
-	delete(callIsVideo, chatID)
+
+	connectMu.Lock()
+	for id := range ids {
+		switchHold[id] = 0
+		delete(joinParams, id)
+		delete(currentPaths, id)
+		delete(streamAt, id)
+		delete(streamGen, id)
+	}
+	connectMu.Unlock()
+
+	for id := range ids {
+		switching.Delete(id)
+		clearLiveSession(id)
+	}
+
+	// The cached InputGroupCall can be missing or stale. Fetch the current
+	// Telegram call as a fallback so the assistant really leaves the VC.
+	var remoteCall telegram.InputGroupCall
+	for id, call := range activeCalls {
+		if canonChatID(id) == target && call != nil {
+			remoteCall = call
+			break
+		}
+	}
+	if remoteCall == nil && Assistant != nil {
+		if call, err := fetchLiveCall(target); err == nil {
+			remoteCall = call
+		} else {
+			log.Printf("fetch group call for stop chat=%d: %v", target, err)
+		}
+	}
+	if remoteCall != nil && Assistant != nil {
+		if _, err := Assistant.PhoneLeaveGroupCall(remoteCall, 0); err != nil {
+			log.Printf("assistant leave VC chat=%d: %v", target, err)
+		} else {
+			log.Printf("assistant left VC chat=%d", target)
+		}
+	}
 }
 
 func leaveVC(chatID int64) {
