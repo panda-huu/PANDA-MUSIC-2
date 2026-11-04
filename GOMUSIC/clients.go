@@ -35,9 +35,16 @@ func (c *callAPI) SeekBy(chatID int64, ms int64) error {
 		video = s.Video
 	}
 	next := nextSeekSec(chatID, int(ms/1000))
-	setSeekState(chatID, next)
-	err := c.SetStreamSources(chatID, ntgcalls.CaptureStream, buildMedia(path, video, next))
+	media := buildMedia(path, video, next)
+
+	// First try replacing the active source. If ntgcalls lost its local call,
+	// use the normal playback path which can recreate and rejoin the call.
+	err := c.SetStreamSources(chatID, ntgcalls.CaptureStream, media)
+	if err != nil {
+		err = ntgPlay(chatID, media, video)
+	}
 	if err == nil {
+		setSeekState(chatID, next)
 		bumpStream(chatID)
 	}
 	return err
