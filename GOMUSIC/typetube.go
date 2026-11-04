@@ -146,8 +146,6 @@ func probeVideoHeight(path string) int {
 	return height
 }
 
-func searchYT_UNUSED() {}
-
 func downloadTypeTube(raw string, video bool) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
