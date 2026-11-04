@@ -17,9 +17,9 @@ func isHTTP(src string) bool {
 
 func ffmpegPreFlags(src string) string {
 	if !isHTTP(src) {
-		return "-nostdin -hide_banner -re -threads 2 -filter_threads 2 -filter_complex_threads 2 -fflags +genpts+discardcorrupt -err_detect ignore_err "
+		return "-nostdin -hide_banner -re -threads 2 -filter_threads 2 -filter_complex_threads 2 -fflags +genpts "
 	}
-	return "-nostdin -hide_banner -re -threads 2 -filter_threads 2 -filter_complex_threads 2 -reconnect 1 -reconnect_streamed 1 -reconnect_on_network_error 1 -reconnect_delay_max 8 -fflags +genpts+discardcorrupt -err_detect ignore_err "
+	return "-nostdin -hide_banner -re -threads 2 -filter_threads 2 -filter_complex_threads 2 -reconnect 1 -reconnect_streamed 1 -reconnect_on_network_error 1 -reconnect_delay_max 8 -fflags +genpts "
 }
 
 func videoSize(path string) (int, int) {
@@ -84,7 +84,7 @@ func buildMediaAV(audioSrc, videoSrc string, video bool, seekSec int) ntgcalls.M
 		seek = fmt.Sprintf("-ss %d ", seekSec)
 	}
 	audioCmd := fmt.Sprintf(
-		"ffmpeg %s%s-i %s -vn -af apad=pad_dur=1.2 -f s16le -ac 2 -ar 48000 -v quiet pipe:1",
+		"ffmpeg %s%s-i %s -vn -af aresample=async=1000:first_pts=0 -f s16le -ac 2 -ar 48000 -flush_packets 1 -v quiet pipe:1",
 		ffmpegPreFlags(audioSrc), seek, aq,
 	)
 	audio := &ntgcalls.AudioDescription{
