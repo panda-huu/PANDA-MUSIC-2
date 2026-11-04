@@ -5,7 +5,8 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"\n\t"strings"
+	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
