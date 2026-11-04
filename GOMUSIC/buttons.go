@@ -69,7 +69,7 @@ func ownerURL() string {
 func GetStartMarkup() [][]InlineBtn {
 	updatesURL := normalizeTelegramURL(UpdatesChannel, "https://t.me/sxypndu")
 	supportURL := normalizeTelegramURL(SupportGroup, "https://t.me/crzy_soul")
-	developerURL := normalizeTelegramURL(ownerURL(), "https://t.me/sxyrdhu")
+	developerURL := "https://t.me/ll_PANDA_BBY_ll"
 	webMusicURL := "https://t.me/RADHIKA_688U_MUSIC_BOT/xmusic"
 
 	return [][]InlineBtn{
