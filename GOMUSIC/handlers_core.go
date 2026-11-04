@@ -195,22 +195,12 @@ func helpListCaption(uid int64, name string) string {
 }
 
 func loggerTargets() []int64 {
-	ids := []int64{LoggerID}
 	if LoggerID == 0 {
-		return ids
+		return nil
 	}
-	s := strconv.FormatInt(LoggerID, 10)
-	if strings.HasPrefix(s, "-100") {
-		if raw, err := strconv.ParseInt(s[4:], 10, 64); err == nil && raw != 0 {
-			ids = append(ids, raw, -raw)
-		}
-	} else if LoggerID > 0 {
-		// Telegram supergroups use -100<raw channel id>. Accept a raw
-		// positive id from LOGGER_ID and try its canonical form first.
-		ids[0] = -(1000000000000 + LoggerID)
-		ids = append(ids, LoggerID, -LoggerID)
-	}
-	return ids
+	// Keep Telegram's canonical supergroup ID (-100xxxxxxxxxx).
+	// Stripping -100 creates invalid chat IDs and noisy GetChat failures.
+	return []int64{LoggerID}
 }
 
 func sendLogger(text string, markup telegram.ReplyMarkup) {
@@ -247,17 +237,19 @@ func warmLogger() {
 	}
 	log.Println("warming logger", LoggerID)
 	for _, id := range loggerTargets() {
-		if Bot != nil {
-			if _, err := Bot.GetChat(id); err != nil {
-				log.Println("bot GetChat", id, err)
+		for _, c := range []*telegram.Client{Bot, Assistant} {
+			if c == nil {
+				continue
 			}
-			_, _ = Bot.ResolvePeer(id)
-		}
-		if Assistant != nil {
-			if _, err := Assistant.GetChat(id); err != nil {
-				log.Println("assistant GetChat", id, err)
+			// ResolvePeer first so the client has the channel access hash
+			// before any optional GetChat lookup.
+			if _, err := c.ResolvePeer(id); err != nil {
+				log.Println("logger ResolvePeer", id, err)
+				continue
 			}
-			_, _ = Assistant.ResolvePeer(id)
+			if _, err := c.GetChat(id); err != nil {
+				log.Println("logger GetChat", id, err)
+			}
 		}
 	}
 }
