@@ -215,7 +215,8 @@ func sendQuotedPhoto(chatID int64, inner string, rows [][]InlineBtn) (*telegram.
 	}
 	caption := quotedCaption(inner)
 	photo := pickStartPhoto()
-	apiChatID := canonChatID(chatID)
+	// Bot API private chat IDs must remain positive user IDs; canonChatID is only for MTProto channel IDs.
+	apiChatID := chatID
 	body := map[string]any{
 		"chat_id":    apiChatID,
 		"photo":      photo,
