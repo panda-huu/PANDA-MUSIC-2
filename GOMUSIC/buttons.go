@@ -74,8 +74,7 @@ func GetStartMarkup() [][]InlineBtn {
 		{styleURLBtn(btnAddMe, BotLink+"?startgroup=true", ColourRed)},
 		{styleBtn(btnAbout, "about_menu", ColourBlue), styleBtn(btnHelpStart, "help_cb", ColourGreen)},
 		{styleURLBtn(btnUpdates, UpdatesChannel, ColourBlue), styleURLBtn(btnSupport, SupportGroup, ColourGreen)},
-		{styleURLBtn(btnSource, ownerURL(), ColourRed)},
-		{styleURLBtn("ᴡᴇʙ ᴍᴜsɪᴄ", strings.TrimRight(BotLink, "/")+"/xmusic", ColourBlue)},
+		{styleURLBtn(btnSource, ownerURL(), ColourRed), styleWebAppBtn("ᴡᴇʙ ᴍᴜsɪᴄ", "https://t.me/RADHIKA_688U_MUSIC_BOT/xmusic", ColourBlue)},
 	}
 }
 
@@ -120,7 +119,8 @@ func GetNowPlayingMarkup(bar string, autoplayOn bool) [][]InlineBtn {
 			styleBtn("‣‣I", "skip", ColourGreen),
 			styleBtn("▢", "stop", ColourRed),
 		},
-		{styleBtn(btnSeekBack, "seek_back", ColourBlue), styleURLBtn("ᴡᴇʙ ᴍᴜsɪᴄ", strings.TrimRight(BotLink, "/")+"/xmusic", ColourGreen), styleBtn(btnSeekFwd, "seek_fwd", ColourGreen)},
+		{styleBtn(btnSeekBack, "seek_back", ColourBlue), styleBtn(btnSeekFwd, "seek_fwd", ColourGreen)},
+		{styleWebAppBtn("🎵 ᴡᴇʙ ᴍᴜsɪᴄ", "https://t.me/RADHIKA_688U_MUSIC_BOT/xmusic", ColourGreen)},
 		{styleBtn(autoplayBtnText(autoplayOn), "autoplay_toggle", ColourBlue)},
 		{styleBtn(btnClose, "close", ColourRed)},
 	}
