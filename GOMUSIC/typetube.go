@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,7 +18,7 @@ import (
 
 var (
 	typeTubeOnce sync.Once
-	typeTube      *typetube.Client
+	typeTube     *typetube.Client
 )
 
 func typeTubeClient() *typetube.Client {
@@ -75,6 +78,76 @@ func searchYT(query string) (urlStr, title, duration, thumbnail string, playlist
 	return link, item.Title, dur, thumbFor(link, ""), nil, nil
 }
 
+// streamHeight reads the real pixel height from TypeTube's quality/resolution
+// fields. The resolution field is preferred because quality labels vary.
+func streamHeight(resolution, quality string) int {
+	for _, value := range []string{resolution, quality} {
+		value = strings.TrimSpace(strings.ToLower(value))
+		if value == "" {
+			continue
+		}
+		if x := strings.LastIndex(value, "x"); x >= 0 && x+1 < len(value) {
+			if h, err := strconv.Atoi(strings.TrimLeft(value[x+1:], " p")); err == nil && h > 0 {
+				return h
+			}
+		}
+		digits := ""
+		for _, r := range value {
+			if r >= '0' && r <= '9' {
+				digits += string(r)
+			}
+		}
+		if h, err := strconv.Atoi(digits); err == nil && h > 0 {
+			return h
+		}
+	}
+	return 0
+}
+
+// TypeTube's selector returns the first stream <= target, not necessarily the
+// highest one. Sort descending and remove streams above 1080p before calling it.
+func prepare1080pTrack(track *typetube.TrackResult) (int, error) {
+	if track == nil {
+		return 0, fmt.Errorf("TypeTube returned empty track metadata")
+	}
+	streams := make([]typetube.VideoStream, 0, len(track.VideoStreams))
+	for _, stream := range track.VideoStreams {
+		height := streamHeight(stream.Resolution, stream.Quality)
+		if height > 0 && height <= 1080 && strings.TrimSpace(stream.URL) != "" {
+			streams = append(streams, stream)
+		}
+	}
+	sort.SliceStable(streams, func(i, j int) bool {
+		return streamHeight(streams[i].Resolution, streams[i].Quality) >
+			streamHeight(streams[j].Resolution, streams[j].Quality)
+	})
+	if len(streams) > 0 {
+		track.VideoStreams = streams
+		track.BestVideo = &track.VideoStreams[0]
+		return streamHeight(track.BestVideo.Resolution, track.BestVideo.Quality), nil
+	}
+
+	if track.BestVideo != nil && strings.TrimSpace(track.BestVideo.URL) != "" {
+		height := streamHeight(track.BestVideo.Resolution, track.BestVideo.Quality)
+		if height > 0 && height <= 1080 {
+			return height, nil
+		}
+	}
+	return 0, fmt.Errorf("TypeTube has no video stream at or below 1080p for this video")
+}
+
+func probeVideoHeight(path string) int {
+	out, err := exec.Command("ffprobe", "-v", "error", "-select_streams", "v:0",
+		"-show_entries", "stream=height", "-of", "default=noprint_wrappers=1:nokey=1", path).Output()
+	if err != nil {
+		return 0
+	}
+	height, _ := strconv.Atoi(strings.TrimSpace(string(out)))
+	return height
+}
+
+func searchYT_UNUSED() {}
+
 func downloadTypeTube(raw string, video bool) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -93,12 +166,23 @@ func downloadTypeTube(raw string, video bool) (string, error) {
 	}
 
 	ext := ".audio.m4a"
+	targetHeight := 0
 	if video {
 		ext = ".video.mp4"
+		targetHeight, err = prepare1080pTrack(track)
+		if err != nil {
+			return "", err
+		}
+		log.Printf("[TypeTube] selected video height=%dp title=%q", targetHeight, track.Title)
 	}
 	dest := filepath.Join(downloadDir, track.ID+ext)
+
 	if st, statErr := os.Stat(dest); statErr == nil && st.Size() > 1024 {
-		if !video || fileHasVideo(dest) {
+		if !video {
+			return dest, nil
+		}
+		// Reuse only a cache matching the currently selected source resolution.
+		if fileHasVideo(dest) && probeVideoHeight(dest) == targetHeight {
 			return dest, nil
 		}
 		_ = os.Remove(dest)
@@ -130,9 +214,17 @@ func downloadTypeTube(raw string, video bool) (string, error) {
 		_ = os.Remove(result.FilePath)
 		return "", fmt.Errorf("TypeTube downloaded an empty or invalid file")
 	}
-	if video && !fileHasVideo(result.FilePath) {
-		_ = os.Remove(result.FilePath)
-		return "", fmt.Errorf("TypeTube result has no video stream")
+	if video {
+		if !fileHasVideo(result.FilePath) {
+			_ = os.Remove(result.FilePath)
+			return "", fmt.Errorf("TypeTube result has no video stream")
+		}
+		actualHeight := probeVideoHeight(result.FilePath)
+		if actualHeight != targetHeight {
+			_ = os.Remove(result.FilePath)
+			return "", fmt.Errorf("video resolution mismatch: requested best available %dp, downloaded %dp", targetHeight, actualHeight)
+		}
+		log.Printf("[TypeTube] verified video resolution=%dp", actualHeight)
 	}
 	log.Printf("[TypeTube] saved %s title=%q bytes=%d video=%t", result.FilePath, track.Title, st.Size(), video)
 	return result.FilePath, nil
