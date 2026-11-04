@@ -164,8 +164,10 @@ func handleSeek(m *telegram.NewMessage) error {
 		_, _ = sendHTML(Bot, m.ChatID(), richHeading("usage", 3)+richNote("<code>/seek 15</code>"), nil)
 		return nil
 	}
-	setSeekState(m.ChatID(), getSeekState(m.ChatID())+n)
-	_ = Calls.SeekBy(m.ChatID(), int64(n)*1000)
+	if err := Calls.SeekBy(m.ChatID(), int64(n)*1000); err != nil {
+		_, _ = sendHTML(Bot, m.ChatID(), richHeading("seek failed", 3)+richNote("<code>"+richEsc(err.Error())+"</code>"), nil)
+		return nil
+	}
 	_, _ = sendHTML(Bot, m.ChatID(), richHeading("seek", 3)+richKVTable([][2]string{{"sec", fmt.Sprintf("<code>+%d</code>", n)}}), nil)
 	return nil
 }
