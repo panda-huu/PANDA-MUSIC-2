@@ -41,13 +41,15 @@ func ownerURL() string {
 	return "https://t.me/"
 }
 
-// Keep /start keyboards callback-only: malformed optional URL/WebApp buttons
-// previously caused Telegram to reject the entire message (BUTTON_URL_INVALID).
+// Restore the original full /start menu layout. menu.go validates optional
+// URLs and skips only a malformed button instead of rejecting the whole menu.
 func GetStartMarkup() [][]InlineBtn {
 	return [][]InlineBtn{
-		{styleBtn(btnAbout,"about_menu",ColourBlue),styleBtn(btnHelpStart,"help_cb",ColourGreen)},
-		{styleBtn(btnUpdates,"open_updates",ColourBlue),styleBtn(btnSupport,"open_support",ColourGreen)},
-		{styleBtn(btnSource,"open_source",ColourRed)},
+		{styleURLBtn(btnAddMe, strings.TrimRight(BotLink, "/")+"?startgroup=true", ColourRed)},
+		{styleBtn(btnAbout, "about_menu", ColourBlue), styleBtn(btnHelpStart, "help_cb", ColourGreen)},
+		{styleURLBtn(btnUpdates, UpdatesChannel, ColourBlue), styleURLBtn(btnSupport, SupportGroup, ColourGreen)},
+		{styleURLBtn(btnSource, ownerURL(), ColourRed)},
+		{styleWebAppBtn("ᴡᴇʙ ᴍᴜsɪᴄ", "https://t.me/RADHIKA_688U_MUSIC_BOT/xmusic", ColourBlue)},
 	}
 }
 func GetAboutMarkup() [][]InlineBtn { return [][]InlineBtn{{styleBtn(btnBack,"start",ColourRed)}} }
