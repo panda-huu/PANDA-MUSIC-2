@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,20 @@ var (
 	menuHTTP   = &http.Client{Timeout: 5 * time.Second}
 	menuEditID sync.Map
 )
+
+// validMenuURL prevents one malformed optional button URL from rejecting the
+// entire Telegram inline keyboard (and therefore the complete /start menu).
+func validMenuURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.ContainsAny(raw, " \t\r\n") {
+		return false
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u == nil || u.Scheme != "https" || u.Hostname() == "" {
+		return false
+	}
+	return u.User == nil
+}
 
 func styleFromColour(colour string) *telegram.KeyboardButtonStyle {
 	switch strings.ToLower(colour) {
@@ -38,11 +53,20 @@ func gogramMarkup(rows [][]InlineBtn) telegram.ReplyMarkup {
 		btns := make([]telegram.KeyboardInlineButton, 0, len(row))
 		for _, b := range row {
 			var btn telegram.KeyboardInlineButton
-			if b.WebApp != "" {
-				btn = telegram.Button.WebView(b.Text, b.WebApp)
-			} else if b.URL != "" {
-				btn = telegram.Button.URL(b.Text, b.URL)
-			} else {
+			switch {
+			case b.WebApp != "":
+				if !validMenuURL(b.WebApp) {
+					log.Printf("skipping invalid WebApp button URL for %q", b.Text)
+					continue
+				}
+				btn = telegram.Button.WebView(b.Text, strings.TrimSpace(b.WebApp))
+			case b.URL != "":
+				if !validMenuURL(b.URL) {
+					log.Printf("skipping invalid URL button for %q", b.Text)
+					continue
+				}
+				btn = telegram.Button.URL(b.Text, strings.TrimSpace(b.URL))
+			default:
 				btn = telegram.Button.Data(b.Text, b.Data)
 			}
 			if st := styleFromColour(b.Colour); st != nil {
@@ -65,9 +89,17 @@ func apiMarkup(rows [][]InlineBtn, withStyle bool) map[string]any {
 			item := map[string]any{"text": b.Text}
 			switch {
 			case b.WebApp != "":
-				item["web_app"] = map[string]string{"url": b.WebApp}
+				if !validMenuURL(b.WebApp) {
+					log.Printf("skipping invalid WebApp button URL for %q", b.Text)
+					continue
+				}
+				item["web_app"] = map[string]string{"url": strings.TrimSpace(b.WebApp)}
 			case b.URL != "":
-				item["url"] = b.URL
+				if !validMenuURL(b.URL) {
+					log.Printf("skipping invalid URL button for %q", b.Text)
+					continue
+				}
+				item["url"] = strings.TrimSpace(b.URL)
 			default:
 				item["callback_data"] = b.Data
 			}
@@ -196,6 +228,8 @@ func sendQuotedPhoto(chatID int64, inner string, rows [][]InlineBtn) (*telegram.
 	if id, err := botAPICallID("sendPhoto", body); err == nil {
 		menuEditID.Store(id, apiChatID)
 		return nil, nil
+	} else {
+		log.Println("Bot API sendPhoto failed:", err)
 	}
 	msg, err := Bot.SendMedia(chatID, photo, &telegram.MediaOptions{
 		Caption:     caption,
