@@ -165,14 +165,12 @@ func skipCurrent(chatID int64) error {
 }
 
 func chatIDForms(chatID int64) []int64 {
-	ids := []int64{chatID}
-	s := strconv.FormatInt(chatID, 10)
-	if strings.HasPrefix(s, "-100") {
-		if raw, err := strconv.ParseInt(s[4:], 10, 64); err == nil && raw != 0 {
-			ids = append(ids, raw, -raw)
-		}
+	if chatID == 0 {
+		return nil
 	}
-	return ids
+	// Telegram supergroups must be addressed with their canonical -100 ID.
+	// Do not retry with the stripped positive/negative channel ID.
+	return []int64{canonChatID(chatID)}
 }
 
 func alreadyMemberErr(err error) bool {
