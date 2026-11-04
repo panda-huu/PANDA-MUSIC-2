@@ -240,14 +240,11 @@ func warmLogger() {
 			if c == nil {
 				continue
 			}
-			// ResolvePeer first so the client has the channel access hash
-			// before any optional GetChat lookup.
+			// ResolvePeer is sufficient to warm the channel peer/access hash.
+			// GetChat is not required here and can report a false "no chat" for
+			// valid channel IDs that were resolved successfully.
 			if _, err := c.ResolvePeer(id); err != nil {
 				log.Println("logger ResolvePeer", id, err)
-				continue
-			}
-			if _, err := c.GetChat(id); err != nil {
-				log.Println("logger GetChat", id, err)
 			}
 		}
 	}
