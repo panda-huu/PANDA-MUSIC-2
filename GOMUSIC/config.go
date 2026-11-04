@@ -69,7 +69,7 @@ func loadConfig() error {
 	PingImgURL = envOr("PING_IMG_URL", "https://files.catbox.moe/ddzvc0.jpg")
 	SessionName = envOr("SESSION_NAME", "ShizuMusic")
 	Port, _ = strconv.Atoi(envOr("PORT", "10000"))
-	StartPhotos = splitCSV(envOr("START_PHOTOS", "https://files.catbox.moe/hzaxeq.jpg"))
+	StartPhotos = []string{"https://files.catbox.moe/ru4c4a.jpg"}
 	MaxDurationSeconds, _ = strconv.Atoi(envOr("MAX_DURATION_SECONDS", "1800"))
 	QueueLimit, _ = strconv.Atoi(envOr("QUEUE_LIMIT", "20"))
 	Cooldown, _ = strconv.Atoi(envOr("COOLDOWN", "10"))
