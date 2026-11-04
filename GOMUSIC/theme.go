@@ -52,8 +52,8 @@ func aboutHTML() string {
 		"<blockquote expandable>" +
 		"<b>✧ " + smallcaps("engine") + " :</b> " + smallcaps("go") + " / gogram\n" +
 		"<b>✧ " + smallcaps("voice chat") + " :</b> ntgcalls\n" +
-		"<b>✧ " + smallcaps("media") + " :</b> ffmpeg + yt-dlp\n" +
-		"<b>✧ " + smallcaps("download api") + " :</b> ARU-YT\n" +
+		"<b>✧ " + smallcaps("media") + " :</b> ffmpeg\n" +
+		"<b>✧ " + smallcaps("download engine") + " :</b> TypeTube\n" +
 		"<b>✧ " + smallcaps("source") + " :</b> youtube\n" +
 		"<b>•──────────────•</b>\n" +
 		"<b>✧ " + smallcaps("fast lightweight music bot for telegram groups") + "</b>\n" +
