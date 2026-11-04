@@ -58,14 +58,17 @@ func gogramMarkup(rows [][]InlineBtn) telegram.ReplyMarkup {
 }
 
 func apiMarkup(rows [][]InlineBtn, withStyle bool) map[string]any {
-	var out [][]map[string]string
+	var out [][]map[string]any
 	for _, row := range rows {
-		var btns []map[string]string
+		var btns []map[string]any
 		for _, b := range row {
-			item := map[string]string{"text": b.Text}
-			if b.URL != "" {
+			item := map[string]any{"text": b.Text}
+			switch {
+			case b.WebApp != "":
+				item["web_app"] = map[string]string{"url": b.WebApp}
+			case b.URL != "":
 				item["url"] = b.URL
-			} else {
+			default:
 				item["callback_data"] = b.Data
 			}
 			if withStyle && b.Colour != "" {
