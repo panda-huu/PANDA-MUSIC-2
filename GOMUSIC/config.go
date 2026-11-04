@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -28,8 +27,6 @@ var (
 	MaxDurationSeconds int
 	QueueLimit         int
 	Cooldown           int
-	AruYTAPI           string
-	AruAPIKey          string
 )
 
 func loadLoggerID() int64 {
@@ -45,44 +42,6 @@ func loadLoggerID() int64 {
 		}
 	}
 	return -1003861170542
-}
-
-func firstEnv(keys ...string) string {
-	for _, k := range keys {
-		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
-func loadAruAPI() {
-	url := firstEnv("ARU_YT_API", "ARU_YT_URL", "SHRUTI_API_URL")
-	key := firstEnv("ARU_API_KEY", "ARU_YT_KEY", "SHRUTI_API_KEY")
-
-	if i := strings.Index(url, " ARU_API_KEY="); i >= 0 {
-		if key == "" {
-			key = strings.TrimSpace(url[i+len(" ARU_API_KEY="):])
-		}
-		url = strings.TrimSpace(url[:i])
-	}
-	if i := strings.Index(url, " ARU_YT_KEY="); i >= 0 {
-		if key == "" {
-			key = strings.TrimSpace(url[i+len(" ARU_YT_KEY="):])
-		}
-		url = strings.TrimSpace(url[:i])
-	}
-	url = strings.Trim(url, "\"'")
-	key = strings.Trim(key, "\"'")
-	if url == "" {
-		url = "http://127.0.0.1:8080"
-	}
-	if key == "" {
-		key = "PANDA-KEY"
-	}
-	AruYTAPI = strings.TrimRight(url, "/")
-	AruAPIKey = key
-	log.Printf("download API %s key=%d chars", AruYTAPI, len(AruAPIKey))
 }
 
 func loadConfig() error {
@@ -114,7 +73,6 @@ func loadConfig() error {
 	MaxDurationSeconds, _ = strconv.Atoi(envOr("MAX_DURATION_SECONDS", "1800"))
 	QueueLimit, _ = strconv.Atoi(envOr("QUEUE_LIMIT", "20"))
 	Cooldown, _ = strconv.Atoi(envOr("COOLDOWN", "10"))
-	loadAruAPI()
 	return nil
 }
 
