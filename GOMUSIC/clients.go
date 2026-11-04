@@ -21,36 +21,37 @@ func (c *callAPI) Close() {
 }
 
 func (c *callAPI) SeekBy(chatID int64, ms int64) error {
-	unlock := lockChatPlay(chatID)
+	// CallbackQuery may expose a canonical -100... chat ID while playback
+	// state was created from the raw channel ID. Resolve the real state key.
+	playerID := playbackChatID(chatID)
+	unlock := lockChatPlay(playerID)
 	defer unlock()
 
-	path := currentPath(chatID)
-	if path == "" {
-		if s := peekCurrent(chatID); s != nil {
-			path = s.FilePath
-		}
+	path := currentPath(playerID)
+	current := peekCurrent(playerID)
+	if path == "" && current != nil {
+		path = current.FilePath
 	}
 	if path == "" {
-		return fmt.Errorf("nothing playing")
+		log.Printf("seek state missing callback_chat=%d resolved_chat=%d queue=%d local_calls=%v",
+			chatID, playerID, queueSize(playerID), Calls.Calls())
+		return fmt.Errorf("nothing playing (player state not found for this chat)")
 	}
 
-	video := false
-	if s := peekCurrent(chatID); s != nil {
-		video = s.Video
-	}
-	next := nextSeekSec(chatID, int(ms/1000))
+	video := current != nil && current.Video
+	next := nextSeekSec(playerID, int(ms/1000))
 	media := buildMedia(path, video, next)
 
-	// Use the common playback switch path. It refreshes stale ntgcalls local
-	// calls and rejoins the active Telegram VC when the old call was removed.
-	if err := ntgPlay(chatID, media, video); err != nil {
-		log.Printf("seek source switch failed chat=%d target=%ds: %v", chatID, next, err)
+	if err := ntgPlay(playerID, media, video); err != nil {
+		log.Printf("seek source switch failed callback_chat=%d player_chat=%d target=%ds: %v",
+			chatID, playerID, next, err)
 		return fmt.Errorf("stream switch failed: %w", err)
 	}
 
-	setSeekState(chatID, next)
-	bumpStream(chatID)
-	log.Printf("seek applied chat=%d target=%ds video=%t", chatID, next, video)
+	setSeekState(playerID, next)
+	bumpStream(playerID)
+	log.Printf("seek applied callback_chat=%d player_chat=%d target=%ds video=%t",
+		chatID, playerID, next, video)
 	return nil
 }
 
