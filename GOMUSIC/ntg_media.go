@@ -17,13 +17,13 @@ func isHTTP(src string) bool {
 
 func ffmpegPreFlags(src string) string {
 	if !isHTTP(src) {
-		return "-nostdin -hide_banner -re -threads 1 -filter_threads 1 -filter_complex_threads 1 -fflags +genpts+discardcorrupt -err_detect ignore_err "
+		return "-nostdin -hide_banner -re -threads 2 -filter_threads 2 -filter_complex_threads 2 -fflags +genpts+discardcorrupt -err_detect ignore_err "
 	}
-	return "-nostdin -hide_banner -re -threads 1 -filter_threads 1 -filter_complex_threads 1 -reconnect 1 -reconnect_streamed 1 -reconnect_on_network_error 1 -reconnect_delay_max 8 -fflags +genpts+discardcorrupt -err_detect ignore_err "
+	return "-nostdin -hide_banner -re -threads 2 -filter_threads 2 -filter_complex_threads 2 -reconnect 1 -reconnect_streamed 1 -reconnect_on_network_error 1 -reconnect_delay_max 8 -fflags +genpts+discardcorrupt -err_detect ignore_err "
 }
 
 func videoSize(path string) (int, int) {
-	maxW, maxH := 640, 360
+	maxW, maxH := 1920, 1080
 	if isHTTP(path) {
 		return maxW, maxH
 	}
