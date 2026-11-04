@@ -44,14 +44,17 @@ func ownerURL() string {
 // Restore the original full /start menu layout. menu.go validates optional
 // URLs and skips only a malformed button instead of rejecting the whole menu.
 func GetStartMarkup() [][]InlineBtn {
-	// Keep every start-menu button callback-only. URL buttons were causing
-	// Telegram MTProto BUTTON_URL_INVALID and preventing the whole menu.
+	updatesURL := strings.TrimSpace(UpdatesChannel)
+	supportURL := strings.TrimSpace(SupportGroup)
+	developerURL := ownerURL()
+	webMusicURL := "https://t.me/RADHIKA_688U_MUSIC_BOT/xmusic"
+
 	return [][]InlineBtn{
 		{styleBtn(btnAddMe, "start_add_group", ColourRed)},
 		{styleBtn(btnAbout, "about_menu", ColourBlue), styleBtn(btnHelpStart, "help_cb", ColourGreen)},
-		{styleBtn(btnUpdates, "start_updates", ColourBlue), styleBtn(btnSupport, "start_support", ColourGreen)},
-		{styleBtn(btnSource, "start_developer", ColourRed)},
-		{styleBtn("ᴡᴇʙ ᴍᴜsɪᴄ", "start_webmusic", ColourBlue)},
+		{styleURLBtn(btnUpdates, updatesURL, ColourBlue), styleURLBtn(btnSupport, supportURL, ColourGreen)},
+		{styleURLBtn(btnSource, developerURL, ColourRed)},
+		{styleWebAppBtn("ᴡᴇʙ ᴍᴜsɪᴄ", webMusicURL, ColourBlue)},
 	}
 }
 
