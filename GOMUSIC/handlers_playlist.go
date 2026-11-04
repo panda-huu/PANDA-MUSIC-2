@@ -172,9 +172,9 @@ func deletePlaylistPanel(chatID int64, msgID int) {
 }
 
 func stopPlaybackEverywhere(chatID int64) {
-	for _, id := range chatIDForms(chatID) {
-		leaveVCNow(id)
-	}
+	// leaveVCNow resolves raw/canonical aliases and stops the matching local
+	// ntgcalls entry plus the assistant's Telegram group-call participant.
+	leaveVCNow(chatID)
 }
 
 func handlePlaylist(m *telegram.NewMessage) error {
