@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 )
 
 const downloadDir = "downloads"
@@ -93,6 +94,32 @@ func fileHasVideo(path string) bool {
 	out, err := exec.Command("ffprobe", "-v", "error", "-select_streams", "v:0",
 		"-show_entries", "stream=codec_type", "-of", "csv=p=0", path).Output()
 	return err == nil && strings.Contains(strings.ToLower(string(out)), "video")
+}
+
+
+func titleFromMap(m map[string]any) string {
+	if t, ok := m["title"].(map[string]any); ok {
+		if s, ok := t["simpleText"].(string); ok && s != "" {
+			return s
+		}
+		if runs, ok := t["runs"].([]any); ok && len(runs) > 0 {
+			if r, ok := runs[0].(map[string]any); ok {
+				if s, ok := r["text"].(string); ok && s != "" {
+					return s
+				}
+			}
+		}
+	}
+	return "YouTube Video"
+}
+
+func durationFromMap(m map[string]any) string {
+	if t, ok := m["lengthText"].(map[string]any); ok {
+		if s, ok := t["simpleText"].(string); ok && s != "" {
+			return s
+		}
+	}
+	return "0:00"
 }
 
 func resolveDirectURL(raw string, video bool) (streamSrc, error) {
