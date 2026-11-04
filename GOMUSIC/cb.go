@@ -158,8 +158,13 @@ func handleCallbackQuery(cb *telegram.CallbackQuery) error {
 		if data == "seek_back" {
 			delta = -15 * time.Second
 		}
+		if Calls == nil {
+			_, _ = cb.Answer("player is not ready", alert)
+			return nil
+		}
 		if err := Calls.SeekBy(chatID, delta.Milliseconds()); err != nil {
-			_, _ = cb.Answer("seek failed", alert)
+			log.Printf("seek callback failed chat=%d action=%s: %v", chatID, data, err)
+			_, _ = cb.Answer("seek failed: "+shortTitle(err.Error(), 150), alert)
 			return nil
 		}
 		if data == "seek_back" {
