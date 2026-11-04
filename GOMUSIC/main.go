@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
+	"os/signal"\n\t"strings"
 	"syscall"
 	"time"
 
@@ -96,7 +96,15 @@ func runBot() (retErr error) {
 	if err != nil {
 		return fmt.Errorf("bot GetMe failed: %w", err)
 	}
-	log.Printf("Bot: @%s\n", me.Username)
+	// Always use Telegram's live bot profile name in the /start menu.
+	BotName = strings.TrimSpace(me.FirstName)
+	if BotName == "" {
+		BotName = strings.TrimSpace(me.Username)
+	}
+	if BotName == "" {
+		BotName = "Music Bot"
+	}
+	log.Printf("Bot: @%s | display name: %s\\n", me.Username, BotName)
 	setBotCommands()
 
 	if am, err := retryGetMe(Assistant, 5); err != nil {
