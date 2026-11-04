@@ -89,18 +89,29 @@ func parseStringVectorC(data []string) (**C.char, C.int) {
 }
 
 func parseErrorCode(futureResult *Future) error {
+	if futureResult == nil || futureResult.errCode == nil {
+		return fmt.Errorf("ntgcalls future returned no error-code buffer")
+	}
 	errorCode := int32(*futureResult.errCode)
+	var result error
 	if errorCode < 0 {
 		var message string
-		if *futureResult.errMessage != nil {
+		if futureResult.errMessage != nil && *futureResult.errMessage != nil {
 			message = C.GoString(*futureResult.errMessage)
+			C.free(unsafe.Pointer(*futureResult.errMessage))
 		}
 		if len(message) == 0 {
 			message = fmt.Sprintf("Error code: %d", errorCode)
 		}
-		return fmt.Errorf("%s", message)
+		result = fmt.Errorf("%s", message)
+	} else if futureResult.errMessage != nil && *futureResult.errMessage != nil {
+		C.free(unsafe.Pointer(*futureResult.errMessage))
 	}
-	return nil
+	C.free(unsafe.Pointer(futureResult.errMessage))
+	C.free(unsafe.Pointer(futureResult.errCode))
+	futureResult.errMessage = nil
+	futureResult.errCode = nil
+	return result
 }
 
 func parseStreamStatus(status C.ntg_stream_status_enum) StreamStatus {
