@@ -13,7 +13,7 @@ type Client struct {
 	streamEndCallbacks          []StreamEndCallback
 	upgradeCallbacks            []UpgradeCallback
 	frameCallbacks              []FrameCallback
-	remoteSourceChangeCallbacks []RemoteSourceCallback
+	remoteSourceCallbacks       []RemoteSourceCallback
 	broadcastTimestampCallbacks []BroadcastTimestampCallback
 	broadcastPartCallbacks      []BroadcastPartCallback
 }
