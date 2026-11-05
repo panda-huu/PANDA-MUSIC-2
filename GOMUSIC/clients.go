@@ -42,7 +42,13 @@ func (c *callAPI) SeekBy(chatID int64, ms int64) error {
 	next := nextSeekSec(playerID, int(ms/1000))
 	media := buildMedia(path, video, next)
 
-	if err := ntgPlay(playerID, media, video); err != nil {
+	// Replacing FFmpeg sources emits a transient StreamEnd event. Mark the
+	// operation as an intentional switch so the stream-end callback cannot
+	// mistake the seek for a finished track and disconnect the assistant.
+	holdSwitch(playerID)
+	err := ntgPlay(playerID, media, video)
+	releaseSwitch(playerID)
+	if err != nil {
 		log.Printf("seek source switch failed callback_chat=%d player_chat=%d target=%ds: %v",
 			chatID, playerID, next, err)
 		return fmt.Errorf("stream switch failed: %w", err)
