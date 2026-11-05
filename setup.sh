@@ -30,6 +30,12 @@ fi
 export PATH=/usr/local/go/bin:$PATH
 go version
 
+echo "==> yt-dlp (YouTube search)"
+if ! command -v yt-dlp >/dev/null 2>&1; then
+  python3 -m pip install --break-system-packages --upgrade yt-dlp
+fi
+yt-dlp --version
+
 echo "==> stop old bot (same session cannot run on two IPs)"
 pkill -f './gomusic' 2>/dev/null || true
 pkill -f '/gomusic' 2>/dev/null || true
