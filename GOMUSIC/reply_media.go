@@ -307,7 +307,7 @@ func playPrepared(m *telegram.NewMessage, song Song) error {
 }
 
 func playPreparedMsg(m *telegram.NewMessage, song Song, pm *telegram.NewMessage) error {
-	chatID := m.ChatID()
+	chatID := canonChatID(m.ChatID())
 	already := isBusy(chatID)
 	if pm == nil {
 		if already {
