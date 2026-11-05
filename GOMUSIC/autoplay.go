@@ -81,16 +81,13 @@ func toggleAutoplay(chatID int64) bool {
 	}
 
 	cur := peekCurrent(chatID)
-	query := "trending music"
+	// Autoplay should discover unrelated recommendations, not search the
+	// current title again. That made the first result too similar to the
+	// currently playing track and often looked like autoplay did nothing.
+	query := "random popular music"
 	req := "AutoPlay"
 	var reqID int64
 	if cur != nil {
-		if strings.TrimSpace(cur.Title) != "" {
-			query = strings.TrimSpace(cur.Title)
-		}
-		if cur.Requester != "" {
-			req = cur.Requester
-		}
 		reqID = cur.RequesterID
 	}
 	queued := startAutoplay(chatID, query, req, reqID)
