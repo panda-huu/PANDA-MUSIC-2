@@ -15,7 +15,7 @@ func nowPlayingCaption(song Song) string {
 }
 
 func nowPlayingKB(chatID int64, elapsed, total float64) telegram.ReplyMarkup {
-	return gogramMarkup(GetNowPlayingMarkup(progressBar(elapsed, total), isAutoplay(chatID)))
+	return gogramMarkup(GetNowPlayingMarkup(progressBar(elapsed, total)))
 }
 
 func sendNowPlaying(chatID int64, song Song) *telegram.NewMessage {
@@ -69,7 +69,6 @@ func playSongOpt(chatID int64, message *telegram.NewMessage, song Song, stayInCa
 		song.Title = t
 	}
 	setSeekState(chatID, 0)
-	apMarkPlayed(chatID, extractVideoID(song.URL))
 
 	src, err := takePrefetch(song.URL, song.Video)
 	if err != nil {
