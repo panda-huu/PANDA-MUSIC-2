@@ -78,8 +78,8 @@ func titleMatchScore(query, title string) float64 {
 func searchYT(query string) (urlStr, title, duration, thumbnail string, playlist []ytItem, err error) {
 	q := strings.TrimSpace(query)
 
-	// Exact user-provided title alias: avoid ambiguous search results for this
-	// particular track and resolve the exact YouTube video ID supplied by user.
+	// Hard-coded alias for a specific track that consistently returns wrong
+	// results from search engines.
 	normalizedQuery := normalizeSearchTitle(q)
 	if normalizedQuery == "brij ke rasiya mere mann basiya" ||
 		normalizedQuery == "brij ke rasiya mere man basiya" {
@@ -95,6 +95,7 @@ func searchYT(query string) (urlStr, title, duration, thumbnail string, playlist
 	defer cancel()
 	client := typeTubeClient()
 
+	// Direct URL or bare 11-char video ID — resolve metadata only, skip search.
 	if strings.Contains(q, "youtube.com/") || strings.Contains(q, "youtu.be/") || len(q) == 11 {
 		track, resolveErr := client.Resolve(ctx, q)
 		if resolveErr != nil {
@@ -107,7 +108,7 @@ func searchYT(query string) (urlStr, title, duration, thumbnail string, playlist
 		return link, track.Title, formatClock(float64(track.DurationSeconds)), thumbFor(link, track.Thumbnail), nil, nil
 	}
 
-	// Search with yt-dlp, but keep TypeTube as the media resolver/downloader.
+	// Text search via yt-dlp; TypeTube is used only for download/resolve.
 	searchCtx, searchCancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer searchCancel()
 	cmd := exec.CommandContext(searchCtx, "yt-dlp", "--dump-single-json", "--flat-playlist",
@@ -134,6 +135,7 @@ func searchYT(query string) (urlStr, title, duration, thumbnail string, playlist
 	if len(searchData.Entries) == 0 {
 		return "", "", "", "", nil, fmt.Errorf("yt-dlp: no search results")
 	}
+
 	playlist = make([]ytItem, 0, len(searchData.Entries))
 	for _, item := range searchData.Entries {
 		id := strings.TrimSpace(item.ID)
@@ -160,34 +162,8 @@ func searchYT(query string) (urlStr, title, duration, thumbnail string, playlist
 		return "", "", "", "", nil, fmt.Errorf("yt-dlp returned no valid video IDs")
 	}
 
-	// Keep all TypeTube search results. Returning only results[0] made
-	// autoplay repeatedly hit the same top result for title-based queries.
-	playlist = make([]ytItem, 0, len(results))
-	for _, item := range results {
-		id := strings.TrimSpace(item.ID)
-		if id == "" {
-			id = extractVideoID(item.URL)
-		}
-		if len(id) != 11 {
-			continue
-		}
-		link := "https://www.youtube.com/watch?v=" + id
-		dur := "0:00"
-		if item.Duration > 0 {
-			dur = formatClock(float64(item.Duration))
-		}
-		playlist = append(playlist, ytItem{
-			Link: link, Title: item.Title, Duration: dur,
-			Thumbnail: thumbFor(link, ""),
-		})
-	}
-	if len(playlist) == 0 {
-		return "", "", "", "", nil, fmt.Errorf("TypeTube returned no valid video IDs")
-	}
-
-	// TypeTube may return loosely related tracks before the exact title.
-	// Rank by query-token coverage so /play selects the closest title instead
-	// of blindly playing the first search result.
+	// Rank results by query-token coverage so the closest title wins, not
+	// just the first result yt-dlp happened to return.
 	sort.SliceStable(playlist, func(i, j int) bool {
 		return titleMatchScore(q, playlist[i].Title) > titleMatchScore(q, playlist[j].Title)
 	})
@@ -221,8 +197,8 @@ func streamHeight(resolution, quality string) int {
 	return 0
 }
 
-// TypeTube's selector returns the first stream <= target, not necessarily the
-// highest one. Sort descending and remove streams above 1080p before calling it.
+// prepare1080pTrack sorts the track's video streams descending by height,
+// strips anything above 1080p, and sets BestVideo to the top result.
 func prepare1080pTrack(track *typetube.TrackResult) (int, error) {
 	if track == nil {
 		return 0, fmt.Errorf("TypeTube returned empty track metadata")
@@ -296,7 +272,6 @@ func downloadTypeTube(raw string, video bool) (string, error) {
 		if !video {
 			return dest, nil
 		}
-		// Reuse only a cache matching the currently selected source resolution.
 		if fileHasVideo(dest) && probeVideoHeight(dest) == targetHeight {
 			return dest, nil
 		}
