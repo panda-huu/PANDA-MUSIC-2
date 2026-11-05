@@ -47,12 +47,26 @@ func stopAutoplay(chatID int64) {
 }
 
 func startAutoplay(chatID int64, query, requester string, requesterID int64) int {
+	// Mark the currently playing track as already seen before searching.
+	// Otherwise the first search result is often the same song and gets
+	// appended to the queue, making autoplay replay the current track.
+	cur := peekCurrent(chatID)
+	currentID := ""
+	if cur != nil {
+		currentID = extractVideoID(cur.URL)
+	}
+
 	stopAutoplay(chatID)
 	apMu.Lock()
 	apActive[chatID] = true
 	apQuery[chatID] = query
 	apFetched[chatID] = map[string]bool{}
+	if currentID != "" {
+		apFetched[chatID][currentID] = true
+	}
 	apMu.Unlock()
+
+	log.Printf("[AutoPlay] start chat=%d current_video=%s", chatID, currentID)
 	return fetchMore(chatID, requester, requesterID)
 }
 
