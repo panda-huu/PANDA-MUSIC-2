@@ -138,20 +138,19 @@ func processPlay(m *telegram.NewMessage, query string, video bool) error {
 	req := userNameOf(m)
 	reqID := userIDOf(m)
 	if len(playlist) > 0 {
-		firstEmpty := !already && queueSize(chatID) == 0
-		var first Song
-		for i, item := range playlist {
-			s := Song{URL: item.Link, Title: item.Title, Duration: isoToHuman(item.Duration), DurationSeconds: isoToSec(item.Duration), Requester: req, RequesterID: reqID, Thumbnail: item.Thumbnail, Video: video}
-			if i == 0 {
-				first = s
-			}
-			addToQueue(chatID, s)
+		// TypeTube Search returns several matching videos, not a user-requested
+		// playlist. Queue only the best match for a normal /play query; otherwise
+		// remixes/slow-reverb versions of the same song get played one after another.
+		item := playlist[0]
+		song := Song{
+			URL: item.Link, Title: item.Title,
+			Duration: isoToHuman(item.Duration), DurationSeconds: isoToSec(item.Duration),
+			Requester: req, RequesterID: reqID, Thumbnail: item.Thumbnail, Video: video,
 		}
-		if firstEmpty {
-			return playSongOpt(chatID, pm, first, true)
+		if !already && queueSize(chatID) == 0 {
+			return playSongOpt(chatID, pm, song, true)
 		}
-		_ = editHTML(pm, wrapBQ(smallcaps("playlist queued")+"\n"+fmt.Sprintf("%d", len(playlist))+" "+smallcaps("tracks")), gogramMarkup(GetQueuedMarkup(chatID, 1)))
-		return nil
+		return RoomPlay(chatID, song, false, pm)
 	}
 	song := Song{URL: urlStr, Title: title, Duration: isoToHuman(durISO), DurationSeconds: parseDur(durISO), Requester: req, RequesterID: reqID, Thumbnail: thumb, Video: video}
 	if !already {
