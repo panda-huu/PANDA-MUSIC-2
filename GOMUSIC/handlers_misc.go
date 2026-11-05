@@ -46,32 +46,6 @@ func handleID(m *telegram.NewMessage) error {
 	return nil
 }
 
-func handleAutoplay(m *telegram.NewMessage) error {
-	if blocked(m) || m.IsPrivate() {
-		return nil
-	}
-	if !isAuthorized(m) {
-		_, _ = sendHTML(Bot, m.ChatID(), richHeading("admin only", 3), nil)
-		return nil
-	}
-	query := cmdArgs(m)
-	chatID := m.ChatID()
-	if query == "" {
-		_, _ = sendHTML(Bot, chatID, richHeading("autoplay usage", 3)+richNote("<code>/autoplay artist name</code>"), nil)
-		return nil
-	}
-	pm, _ := sendHTML(Bot, chatID, richHeading("setting up autoplay...", 3), nil)
-	n := startAutoplay(chatID, query, userNameOf(m), userIDOf(m))
-	_ = editHTML(pm, richHeading("autoplay started", 3)+richKVTable([][2]string{
-		{"query", "<code>" + richEsc(query) + "</code>"},
-		{"queued", fmt.Sprintf("<code>%d</code>", n)},
-	}), nil)
-	if peekCurrent(chatID) != nil && n > 0 {
-		return playSong(chatID, pm, *peekCurrent(chatID))
-	}
-	return nil
-}
-
 func handleSpeed(m *telegram.NewMessage) error {
 	if blocked(m) || !isAuthorized(m) {
 		return nil
