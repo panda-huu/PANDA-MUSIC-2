@@ -145,10 +145,6 @@ func searchYT(query string) (urlStr, title, duration, thumbnail string, playlist
 	sort.SliceStable(playlist, func(i, j int) bool {
 		return titleMatchScore(q, playlist[i].Title) > titleMatchScore(q, playlist[j].Title)
 	})
-	bestScore := titleMatchScore(q, playlist[0].Title)
-	if bestScore < 0.34 {
-		return "", "", "", "", nil, fmt.Errorf("no close title match for %q (best result: %q)", q, playlist[0].Title)
-	}
 	first := playlist[0]
 	return first.Link, first.Title, first.Duration, first.Thumbnail, playlist, nil
 }
