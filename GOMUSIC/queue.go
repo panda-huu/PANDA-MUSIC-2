@@ -20,6 +20,7 @@ var (
 )
 
 func getQueue(chatID int64) []Song {
+	chatID = canonChatID(chatID)
 	queueMu.Lock()
 	defer queueMu.Unlock()
 	q := chatQueues[chatID]
@@ -29,6 +30,7 @@ func getQueue(chatID int64) []Song {
 }
 
 func addToQueue(chatID int64, song Song) int {
+	chatID = canonChatID(chatID)
 	queueMu.Lock()
 	defer queueMu.Unlock()
 	chatQueues[chatID] = append(chatQueues[chatID], song)
@@ -36,6 +38,7 @@ func addToQueue(chatID int64, song Song) int {
 }
 
 func popCurrent(chatID int64) *Song {
+	chatID = canonChatID(chatID)
 	queueMu.Lock()
 	defer queueMu.Unlock()
 	q := chatQueues[chatID]
@@ -48,6 +51,7 @@ func popCurrent(chatID int64) *Song {
 }
 
 func removeFromQueue(chatID int64, index int) *Song {
+	chatID = canonChatID(chatID)
 	queueMu.Lock()
 	defer queueMu.Unlock()
 	q := chatQueues[chatID]
@@ -60,6 +64,7 @@ func removeFromQueue(chatID int64, index int) *Song {
 }
 
 func peekCurrent(chatID int64) *Song {
+	chatID = canonChatID(chatID)
 	queueMu.Lock()
 	defer queueMu.Unlock()
 	q := chatQueues[chatID]
@@ -71,6 +76,7 @@ func peekCurrent(chatID int64) *Song {
 }
 
 func setCurrentDuration(chatID int64, song Song) {
+	chatID = canonChatID(chatID)
 	queueMu.Lock()
 	defer queueMu.Unlock()
 	q := chatQueues[chatID]
@@ -87,6 +93,7 @@ func setCurrentDuration(chatID int64, song Song) {
 }
 
 func peekNext(chatID int64) *Song {
+	chatID = canonChatID(chatID)
 	queueMu.Lock()
 	defer queueMu.Unlock()
 	q := chatQueues[chatID]
@@ -98,6 +105,7 @@ func peekNext(chatID int64) *Song {
 }
 
 func moveAfterCurrent(chatID int64, index int) bool {
+	chatID = canonChatID(chatID)
 	queueMu.Lock()
 	defer queueMu.Unlock()
 	q := chatQueues[chatID]
@@ -113,6 +121,7 @@ func moveAfterCurrent(chatID int64, index int) bool {
 }
 
 func clearQueue(chatID int64) []Song {
+	chatID = canonChatID(chatID)
 	queueMu.Lock()
 	defer queueMu.Unlock()
 	q := chatQueues[chatID]
@@ -121,6 +130,7 @@ func clearQueue(chatID int64) []Song {
 }
 
 func queueSize(chatID int64) int {
+	chatID = canonChatID(chatID)
 	queueMu.Lock()
 	defer queueMu.Unlock()
 	return len(chatQueues[chatID])
@@ -131,14 +141,21 @@ func isEmpty(chatID int64) bool {
 }
 
 func isBusy(chatID int64) bool {
+	chatID = canonChatID(chatID)
 	if queueSize(chatID) > 0 {
 		return true
 	}
 	if Calls != nil {
-		if _, ok := Calls.Calls()[chatID]; ok && Calls.Calls()[chatID] != nil {
+		for id, call := range Calls.Calls() {
+			if call != nil && canonChatID(id) == chatID {
+				return true
+			}
+		}
+	}
+	for id, call := range activeCalls {
+		if call != nil && canonChatID(id) == chatID {
 			return true
 		}
 	}
-	_, ok := activeCalls[chatID]
-	return ok
+	return false
 }
