@@ -107,15 +107,11 @@ func playSongOpt(chatID int64, message *telegram.NewMessage, song Song, stayInCa
 	}
 	setCurrentPath(chatID, playPath)
 
-	wasVideo := callIsVideo[chatID]
+	// Build media strictly from the requested track type. Do not attach a
+	// still-cover camera to audio tracks: doing so leaves the assistant's
+	// video participant tile active after switching from /vplay to /play
+	// (including Queue -> Play Now).
 	media := buildMediaAV(src.Audio, src.Video, song.Video, 0)
-	if !song.Video && (wasVideo || hasLocalCall(chatID)) {
-		cover := cacheThumb(thumbFor(song.URL, song.Thumbnail))
-		if cover == "" {
-			cover = playPath
-		}
-		media = withStillCover(media, cover)
-	}
 	startErr := ntgPlay(chatID, media, song.Video)
 	if startErr != nil {
 		_, _ = sendHTML(Bot, chatID, userFail("playback failed", startErr), nil)
