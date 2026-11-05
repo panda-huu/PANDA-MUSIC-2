@@ -48,7 +48,6 @@ func registerHandlers() {
 	Bot.On("message:/reboot", live(handleReboot))
 	Bot.On("message:/ping", live(handlePing))
 	Bot.On("message:/id", live(handleID))
-	Bot.On("message:/autoplay", live(handleAutoplay))
 	Bot.On("message:/nothumb", live(handleNoThumb))
 	Bot.On("message:/speed", live(handleSpeed))
 	Bot.On("message:/speedreset", live(handleSpeedReset))
