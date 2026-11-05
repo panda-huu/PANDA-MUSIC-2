@@ -19,18 +19,20 @@ var (
 func handleCallback(m *telegram.NewMessage) error { return nil }
 
 func callbackChatID(cb *telegram.CallbackQuery, msg *telegram.NewMessage) int64 {
-	var id int64
+	// CallbackQuery.ChatID is the peer attached to the inline-button update.
+	// Prefer it over fields reconstructed from the message object: for
+	// channel-backed supergroups, msg.ChannelID() can be a raw channel ID
+	// while the player/ntgcalls state is keyed by the canonical -100 chat ID.
+	if cb != nil && cb.ChatID != 0 {
+		return canonChatID(cb.ChatID)
+	}
 	if msg != nil {
-		id = msgBotChatID(msg)
-		if id == 0 {
-			id = msg.ChatID()
+		if id := msgBotChatID(msg); id != 0 {
+			return canonChatID(id)
 		}
-	}
-	if id == 0 && cb != nil {
-		id = cb.ChatID
-	}
-	if id != 0 {
-		return canonChatID(id)
+		if id := msg.ChatID(); id != 0 {
+			return canonChatID(id)
+		}
 	}
 	return 0
 }
@@ -52,7 +54,7 @@ func alreadyHandledCallback(cb *telegram.CallbackQuery) bool {
 }
 
 func handleCallbackQuery(cb *telegram.CallbackQuery) error {
-	if cb == nil || cb.Sender == nil {
+	if cb == nil {
 		return nil
 	}
 	if !acceptUpdates.Load() {
@@ -62,7 +64,7 @@ func handleCallbackQuery(cb *telegram.CallbackQuery) error {
 	if alreadyHandledCallback(cb) {
 		return nil
 	}
-	if isUserBlockedDB(cb.Sender.ID) {
+	if cb.Sender != nil && isUserBlockedDB(cb.Sender.ID) {
 		_, _ = cb.Answer("")
 		return nil
 	}
@@ -75,17 +77,35 @@ func handleCallbackQuery(cb *telegram.CallbackQuery) error {
 	}
 	msg, _ := cb.GetMessage()
 	chatID := callbackChatID(cb, msg)
+	log.Printf("player callback data=%q chat_id=%d message_chat_id=%d", data, chatID, func() int64 {
+		if msg == nil { return 0 }
+		return msg.ChatID()
+	}())
 	alert := &telegram.CallbackOptions{Alert: true}
+	if chatID == 0 && (data == "pause" || data == "resume" || data == "replay" || data == "skip" || data == "seek_back" || data == "seek_fwd") {
+		_, _ = cb.Answer("could not identify this group's player", alert)
+		return nil
+	}
 	switch {
 	case data == "pause":
+		if Calls == nil {
+			_, _ = cb.Answer("player is not ready", alert)
+			return nil
+		}
 		if _, err := Calls.Pause(chatID); err != nil {
-			_, _ = cb.Answer("failed to pause", alert)
+			log.Printf("pause callback failed chat=%d: %v", chatID, err)
+			_, _ = cb.Answer("failed to pause: "+shortTitle(err.Error(), 120), alert)
 			return nil
 		}
 		_, _ = cb.Answer("paused")
 	case data == "resume":
+		if Calls == nil {
+			_, _ = cb.Answer("player is not ready", alert)
+			return nil
+		}
 		if _, err := Calls.Resume(chatID); err != nil {
-			_, _ = cb.Answer("failed to resume", alert)
+			log.Printf("resume callback failed chat=%d: %v", chatID, err)
+			_, _ = cb.Answer("failed to resume: "+shortTitle(err.Error(), 120), alert)
 			return nil
 		}
 		_, _ = cb.Answer("resumed")
