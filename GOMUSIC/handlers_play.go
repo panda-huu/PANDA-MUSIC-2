@@ -452,7 +452,6 @@ func handleClear(m *telegram.NewMessage) error {
 	if blocked(m) || m.IsPrivate() || !isAuthorized(m) {
 		return nil
 	}
-	stopAutoplay(m.ChatID())
 	clearQueue(m.ChatID())
 	_, _ = sendHTML(Bot, m.ChatID(), wrapBQ(smallcaps("queue cleared")), nil)
 	return nil
