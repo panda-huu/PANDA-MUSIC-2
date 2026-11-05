@@ -14,6 +14,11 @@ RUN go mod download
 
 COPY . .
 
+# Install the official Linux/amd64 yt-dlp executable for YouTube search.
+RUN mkdir -p /out && \
+    curl -fL --retry 3 https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o /out/yt-dlp && \
+    chmod 0755 /out/yt-dlp
+
 # Downloads the matching Linux/amd64 ntgcalls 2.2.5 static archive and header.
 RUN go run setup_ntgcalls.go
 
@@ -23,6 +28,7 @@ RUN CGO_ENABLED=1 go build -trimpath -ldflags="-w -s" -o /out/gomusic ./GOMUSIC
 
 FROM debian:bookworm-slim AS runtime
 ENV PORT=10000
+ENV PATH="/usr/local/bin:/usr/bin:/bin"
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -30,6 +36,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /out/gomusic /app/gomusic
+COPY --from=builder /out/yt-dlp /usr/local/bin/yt-dlp
+RUN chmod 0755 /usr/local/bin/yt-dlp && yt-dlp --version
 
 EXPOSE 10000
 CMD ["./gomusic"]
