@@ -86,7 +86,7 @@ func GetHelpMarkup() [][]InlineBtn {
 	return [][]InlineBtn{
 		{styleBtn(btnAdmin,"help:admin",ColourRed),styleBtn(btnAuth,"help:auth",ColourBlue),styleBtn(btnBcast,"help:bcast",ColourGreen)},
 		{styleBtn(btnPlay,"help:play",ColourRed),styleBtn(btnSudo,"help:sudo",ColourBlue),styleBtn(btnRestrict,"help:restrict",ColourGreen)},
-		{styleBtn(btnThumb,"help:thumb",ColourRed),styleBtn(btnStart,"help:start",ColourBlue),styleBtn(btnAutoplay,"help:autoplay",ColourGreen)},
+		{styleBtn(btnThumb,"help:thumb",ColourRed),styleBtn(btnStart,"help:start",ColourBlue)},
 		{styleBtn(btnPlaylist,"help:playlist",ColourRed),styleBtn(btnVCLogs,"help:vclogs",ColourBlue),styleBtn(btnInline,"help:inline",ColourGreen)},
 		{styleBtn(btnGames,"help:games",ColourBlue),styleBtn(btnBack,"start",ColourRed)},
 	}
@@ -96,12 +96,11 @@ func GetBackMarkup() [][]InlineBtn { return [][]InlineBtn{{styleBtn(btnBack,"hel
 func GetGroupStartMarkup() [][]InlineBtn {
 	return [][]InlineBtn{{styleBtn(btnCommands,"help_cb",ColourGreen)},{styleBtn(btnAbout,"about_menu",ColourBlue)}}
 }
-func GetNowPlayingMarkup(bar string, autoplayOn bool) [][]InlineBtn {
+func GetNowPlayingMarkup(bar string) [][]InlineBtn {
 	return [][]InlineBtn{
 		{styleBtn(bar,"progress",ColourGreen)},
 		{styleBtn("▷","resume",ColourRed),styleBtn("II","pause",ColourBlue),styleBtn("⟳","replay",ColourGreen),styleBtn("‣‣I","skip",ColourGreen),styleBtn("▢","stop",ColourRed)},
 		{styleBtn(btnSeekBack,"seek_back",ColourBlue),styleBtn(btnSeekFwd,"seek_fwd",ColourGreen)},
-		{styleBtn(autoplayBtnText(autoplayOn),"autoplay_toggle",ColourBlue)},
 		{styleBtn(btnClose,"close",ColourRed)},
 	}
 }
