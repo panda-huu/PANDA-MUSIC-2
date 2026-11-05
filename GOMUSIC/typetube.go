@@ -62,20 +62,32 @@ func searchYT(query string) (urlStr, title, duration, thumbnail string, playlist
 		return "", "", "", "", nil, fmt.Errorf("TypeTube: no search results")
 	}
 
-	item := results[0]
-	id := strings.TrimSpace(item.ID)
-	if id == "" {
-		id = extractVideoID(item.URL)
+	// Keep all TypeTube search results. Returning only results[0] made
+	// autoplay repeatedly hit the same top result for title-based queries.
+	playlist = make([]ytItem, 0, len(results))
+	for _, item := range results {
+		id := strings.TrimSpace(item.ID)
+		if id == "" {
+			id = extractVideoID(item.URL)
+		}
+		if len(id) != 11 {
+			continue
+		}
+		link := "https://www.youtube.com/watch?v=" + id
+		dur := "0:00"
+		if item.Duration > 0 {
+			dur = formatClock(float64(item.Duration))
+		}
+		playlist = append(playlist, ytItem{
+			Link: link, Title: item.Title, Duration: dur,
+			Thumbnail: thumbFor(link, ""),
+		})
 	}
-	if len(id) != 11 {
-		return "", "", "", "", nil, fmt.Errorf("TypeTube returned invalid video ID")
+	if len(playlist) == 0 {
+		return "", "", "", "", nil, fmt.Errorf("TypeTube returned no valid video IDs")
 	}
-	link := "https://www.youtube.com/watch?v=" + id
-	dur := "0:00"
-	if item.Duration > 0 {
-		dur = formatClock(float64(item.Duration))
-	}
-	return link, item.Title, dur, thumbFor(link, ""), nil, nil
+	first := playlist[0]
+	return first.Link, first.Title, first.Duration, first.Thumbnail, playlist, nil
 }
 
 // streamHeight reads the real pixel height from TypeTube's quality/resolution
