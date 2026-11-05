@@ -24,7 +24,6 @@ var (
 	btnRestrict  = smallcaps("restrict")
 	btnThumb     = smallcaps("thumbnail")
 	btnStart     = smallcaps("start")
-	btnAutoplay  = smallcaps("autoplay")
 	btnPlaylist  = smallcaps("playlist")
 	btnVCLogs    = smallcaps("vc-logs")
 	btnInline    = smallcaps("inline")
@@ -58,7 +57,7 @@ func aboutHTML() string {
 		"<b>•──────────────•</b>\n" +
 		"<b>✧ " + smallcaps("fast lightweight music bot for telegram groups") + "</b>\n" +
 		"<b>✧ " + smallcaps("audio and video streams inside voice chat") + "</b>\n" +
-		"<b>✧ " + smallcaps("queue autoplay seek and player panel included") + "</b>" +
+		"<b>✧ " + smallcaps("queue seek and player panel included") + "</b>" +
 		"</blockquote>"
 }
 
@@ -97,14 +96,6 @@ func incomingTrackHTML(index int, song Song) string {
 		"<b>✨ " + smallcaps("length") + " :</b> " + richEsc(song.Duration) + "\n" +
 		"<b>🏗 " + smallcaps("requester") + " :</b> " + richEsc(song.Requester) + "\n\n" +
 		"💐 " + smallcaps("standby, your session begins shortly") + "</blockquote>"
-}
-
-func autoplayBtnText(on bool) string {
-	state := smallcaps("disabled")
-	if on {
-		state = smallcaps("enabled")
-	}
-	return "♫ " + smallcaps("autoplay") + ": " + state
 }
 
 func queueListHTML(q []Song) string {
@@ -157,7 +148,6 @@ func init() {
 		"restrict": "<blockquote><b>/gblock /gunblock /ublock /uunblock /blocklist</b></blockquote>",
 		"thumb":    "<blockquote><b>" + smallcaps("player panel shows track cover art") + "</b></blockquote>",
 		"start":    "<blockquote><b>/start /help /ping /stats /id</b></blockquote>",
-		"autoplay": "<blockquote><b>/autoplay</b> " + smallcaps("toggle autoplay") + "</blockquote>",
 		"playlist": "<blockquote><b>/play</b> " + smallcaps("or") + " <b>/vplay</b> " + smallcaps("with a youtube playlist link") + "</blockquote>",
 		"vclogs":   "<blockquote><b>" + smallcaps("playback status is shown on the player panel") + "</b></blockquote>",
 		"inline":   "<blockquote><b>▷ II ⟳ ‣‣I ▢ -15s +15s</b></blockquote>",
