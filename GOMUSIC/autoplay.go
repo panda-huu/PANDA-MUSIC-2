@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"strings"
 	"sync"
 )
 
@@ -56,24 +57,30 @@ func startAutoplay(chatID int64, query, requester string, requesterID int64) int
 }
 
 func toggleAutoplay(chatID int64) bool {
+	// Player callbacks use canonical Telegram IDs, while playback state may
+	// have been created with the raw channel ID. Always use the player's key.
+	chatID = playbackChatID(chatID)
 	if isAutoplay(chatID) {
 		stopAutoplay(chatID)
+		log.Printf("[AutoPlay] disabled chat=%d", chatID)
 		return false
 	}
+
 	cur := peekCurrent(chatID)
-	query := "trending songs"
+	query := "trending music"
 	req := "AutoPlay"
 	var reqID int64
 	if cur != nil {
-		if cur.Title != "" {
-			query = cur.Title
+		if strings.TrimSpace(cur.Title) != "" {
+			query = strings.TrimSpace(cur.Title)
 		}
 		if cur.Requester != "" {
 			req = cur.Requester
 		}
 		reqID = cur.RequesterID
 	}
-	startAutoplay(chatID, query, req, reqID)
+	queued := startAutoplay(chatID, query, req, reqID)
+	log.Printf("[AutoPlay] enabled chat=%d query=%q queued=%d", chatID, query, queued)
 	return true
 }
 
@@ -97,7 +104,15 @@ func fetchMore(chatID int64, requester string, requesterID int64) int {
 		apMu.Unlock()
 	}()
 
-	variations := []string{query, query + " new songs", query + " best songs", query + " hits", query + " latest"}
+	variations := []string{
+		query,
+		query + " songs",
+		query + " new songs",
+		query + " hits",
+		"trending music 2026",
+		"popular songs",
+		"latest hit songs",
+	}
 	added := 0
 	for _, variation := range variations {
 		if !isAutoplay(chatID) || added >= batchSize {
