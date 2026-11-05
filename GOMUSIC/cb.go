@@ -173,16 +173,17 @@ func handleCallbackQuery(cb *telegram.CallbackQuery) error {
 			_, _ = cb.Answer("+15s")
 		}
 	case data == "autoplay_toggle":
-		on := toggleAutoplay(chatID)
+		playerID := playbackChatID(chatID)
+		on := toggleAutoplay(playerID)
 		if on {
 			_, _ = cb.Answer("autoplay enabled")
 		} else {
 			_, _ = cb.Answer("autoplay disabled")
 		}
 		if msg != nil {
-			cur := peekCurrent(chatID)
+			cur := peekCurrent(playerID)
 			if cur != nil {
-				_ = editHTML(msg, streamNowPlayingHTML(*cur), nowPlayingKB(chatID, 0, float64(parseDur(cur.Duration))))
+				_ = editHTML(msg, streamNowPlayingHTML(*cur), nowPlayingKB(playerID, 0, float64(parseDur(cur.Duration))))
 			}
 		}
 	case data == "clear":
