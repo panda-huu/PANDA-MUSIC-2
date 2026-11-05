@@ -91,15 +91,16 @@ func playSongOpt(chatID int64, message *telegram.NewMessage, song Song, stayInCa
 		}
 	}
 	if src.File != "" && !isHTTP(src.File) {
-		if song.DurationSeconds > 1 && (song.Duration == "" || song.Duration == "0:00") {
+		// Use the downloaded media's real duration. Search metadata can be
+		// rounded or stale; using it caused the progress timer to end playback
+		// early and disconnect the assistant while audio was still playing.
+		if secs := probeDuration(src.File); secs > 1 {
+			song.DurationSeconds = int(secs + 0.5)
+			song.Duration = formatClock(secs)
+		} else if song.DurationSeconds > 1 && (song.Duration == "" || song.Duration == "0:00") {
 			song.Duration = formatClock(float64(song.DurationSeconds))
 		}
 		setCurrentDuration(chatID, song)
-		go func(path string, id int64) {
-			if secs := probeDuration(path); secs > 1 {
-				setCurrentDuration(id, Song{DurationSeconds: int(secs), Duration: formatClock(secs)})
-			}
-		}(src.File, chatID)
 	}
 	playPath := src.File
 	if playPath == "" {
