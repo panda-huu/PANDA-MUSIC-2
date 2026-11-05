@@ -21,7 +21,7 @@ nano .env
 bash setup.sh
 ```
 
-The setup script installs system packages, Go, ntgcalls and the TypeTube Go module, builds `gomusic`, then starts the bot. **yt-dlp, cookies.txt, ARU-YT and external download API keys are not used.**
+The setup script installs system packages, Go, ntgcalls and the TypeTube Go module, builds `gomusic`, then starts the bot. **yt-dlp is used only for YouTube search; TypeTube resolves and downloads media using the selected YouTube video ID.**
 
 Required `.env` values:
 
