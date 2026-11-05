@@ -147,9 +147,9 @@ func processPlay(m *telegram.NewMessage, query string, video bool) error {
 			Duration: isoToHuman(item.Duration), DurationSeconds: isoToSec(item.Duration),
 			Requester: req, RequesterID: reqID, Thumbnail: item.Thumbnail, Video: video,
 		}
-		if !already && queueSize(chatID) == 0 {
-			return playSongOpt(chatID, pm, song, true)
-		}
+		// Always route the first track through RoomPlay so it is inserted
+		// as queue[0]. Direct playSongOpt bypassed queue initialization;
+		// the next /play then saw an empty queue and replaced the active song.
 		return RoomPlay(chatID, song, false, pm)
 	}
 	song := Song{URL: urlStr, Title: title, Duration: isoToHuman(durISO), DurationSeconds: parseDur(durISO), Requester: req, RequesterID: reqID, Thumbnail: thumb, Video: video}
