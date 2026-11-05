@@ -57,9 +57,6 @@ func RoomChangeStream(chatID int64) error {
 	holdSwitch(chatID)
 	nxt := RoomNextTrack(chatID)
 	if nxt == nil {
-		nxt = takeAutoplayNext(chatID)
-	}
-	if nxt == nil {
 		releaseSwitch(chatID)
 		leaveVCNow(chatID)
 		_, _ = sendHTML(Bot, chatID, wrapBQ(smallcaps("the queue has finished")+"\n\n"+smallcaps("use /play to add more songs")), nil)
@@ -79,15 +76,8 @@ func RoomChangeStream(chatID int64) error {
 			_ = popCurrent(chatID)
 			nxt = peekCurrent(chatID)
 			if nxt == nil {
-				nxt = takeAutoplayNext(chatID)
-			}
-			if nxt == nil {
 				break
 			}
-			continue
-		}
-		if next := takeAutoplayNext(chatID); next != nil {
-			nxt = next
 			continue
 		}
 		break
