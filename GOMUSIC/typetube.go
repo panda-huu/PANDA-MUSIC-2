@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -106,12 +107,57 @@ func searchYT(query string) (urlStr, title, duration, thumbnail string, playlist
 		return link, track.Title, formatClock(float64(track.DurationSeconds)), thumbFor(link, track.Thumbnail), nil, nil
 	}
 
-	results, searchErr := client.Search(ctx, q, 5)
+	// Search with yt-dlp, but keep TypeTube as the media resolver/downloader.
+	searchCtx, searchCancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer searchCancel()
+	cmd := exec.CommandContext(searchCtx, "yt-dlp", "--dump-single-json", "--flat-playlist",
+		"--no-warnings", "--skip-download", "ytsearch5:"+q)
+	output, searchErr := cmd.Output()
 	if searchErr != nil {
-		return "", "", "", "", nil, fmt.Errorf("TypeTube search: %w", searchErr)
+		if searchCtx.Err() != nil {
+			return "", "", "", "", nil, fmt.Errorf("yt-dlp search timed out")
+		}
+		return "", "", "", "", nil, fmt.Errorf("yt-dlp search failed: %w", searchErr)
 	}
-	if len(results) == 0 {
-		return "", "", "", "", nil, fmt.Errorf("TypeTube: no search results")
+	var searchData struct {
+		Entries []struct {
+			ID        string  `json:"id"`
+			Title     string  `json:"title"`
+			URL       string  `json:"url"`
+			Duration  float64 `json:"duration"`
+			Thumbnail string  `json:"thumbnail"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(output, &searchData); err != nil {
+		return "", "", "", "", nil, fmt.Errorf("invalid yt-dlp search response: %w", err)
+	}
+	if len(searchData.Entries) == 0 {
+		return "", "", "", "", nil, fmt.Errorf("yt-dlp: no search results")
+	}
+	playlist = make([]ytItem, 0, len(searchData.Entries))
+	for _, item := range searchData.Entries {
+		id := strings.TrimSpace(item.ID)
+		if len(id) != 11 {
+			id = extractVideoID(item.URL)
+		}
+		if len(id) != 11 {
+			continue
+		}
+		link := "https://www.youtube.com/watch?v=" + id
+		dur := "0:00"
+		if item.Duration > 0 {
+			dur = formatClock(item.Duration)
+		}
+		thumb := strings.TrimSpace(item.Thumbnail)
+		if thumb == "" {
+			thumb = thumbFor(link, "")
+		}
+		playlist = append(playlist, ytItem{
+			Link: link, Title: item.Title, Duration: dur, Thumbnail: thumb,
+		})
+	}
+	if len(playlist) == 0 {
+		return "", "", "", "", nil, fmt.Errorf("yt-dlp returned no valid video IDs")
 	}
 
 	// Keep all TypeTube search results. Returning only results[0] made
