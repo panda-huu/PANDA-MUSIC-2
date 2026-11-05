@@ -216,7 +216,6 @@ func leaveVCNow(chatID int64) {
 	// Stop every ntgcalls entry matching this Telegram group, not just the
 	// callback's chat ID representation.
 	for id := range ids {
-		stopAutoplay(id)
 		for _, song := range clearQueue(id) {
 			deleteFile(song.FilePath)
 		}
