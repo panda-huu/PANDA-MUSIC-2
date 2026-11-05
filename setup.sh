@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
-export PATH=/usr/local/go/bin:$PATH
+export PATH=/usr/local/go/bin:/usr/local/bin:$PATH
 export CGO_ENABLED=1
 
 echo "==> GOMUSICV2 setup"
@@ -17,7 +17,7 @@ fi
 
 echo "==> packages"
 $SUDO apt update -y
-$SUDO apt install -y build-essential gcc g++ make ffmpeg fonts-dejavu-core fonts-dejavu curl git python3 wget unzip ca-certificates
+$SUDO apt install -y build-essential gcc g++ make ffmpeg fonts-dejavu-core curl git python3 wget unzip ca-certificates
 
 if ! command -v go >/dev/null 2>&1; then
   echo "==> installing Go 1.26.0"
@@ -27,12 +27,22 @@ if ! command -v go >/dev/null 2>&1; then
   $SUDO tar -C /usr/local -xzf go1.26.0.linux-amd64.tar.gz
   cd "$ROOT"
 fi
-export PATH=/usr/local/go/bin:$PATH
+export PATH=/usr/local/go/bin:/usr/local/bin:$PATH
 go version
 
 echo "==> yt-dlp (YouTube search)"
 if ! command -v yt-dlp >/dev/null 2>&1; then
-  python3 -m pip install --break-system-packages --upgrade yt-dlp
+  ARCH="$(uname -m)"
+  case "$ARCH" in
+    x86_64|amd64) YTDLP_ASSET="yt-dlp_linux" ;;
+    aarch64|arm64) YTDLP_ASSET="yt-dlp_linux_aarch64" ;;
+    *)
+      echo "Unsupported architecture for yt-dlp: $ARCH" >&2
+      exit 1
+      ;;
+  esac
+  $SUDO curl -fL --retry 3 "https://github.com/yt-dlp/yt-dlp/releases/latest/download/$YTDLP_ASSET" -o /usr/local/bin/yt-dlp
+  $SUDO chmod 0755 /usr/local/bin/yt-dlp
 fi
 yt-dlp --version
 
