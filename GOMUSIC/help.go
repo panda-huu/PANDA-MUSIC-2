@@ -87,10 +87,6 @@ func helpPage(key string) string {
 			"⟒ <b>/ping</b> — " + smallcaps("latency") + "\n" +
 			"⟒ <b>/id</b> — " + smallcaps("chat and user ids") + "\n" +
 			"⟒ <b>/stats</b> — " + smallcaps("bot stats") + "</blockquote>",
-		"autoplay": "<blockquote><b>⊚ " + smallcaps("autoplay") + "</b></blockquote>\n" +
-			"<blockquote expandable>⟒ <b>/autoplay</b> — " + smallcaps("toggle autoplay") + "\n" +
-			"👉 " + smallcaps("uses youtube radio mix first, then smart search.") + "\n" +
-			"⟒ " + smallcaps("also toggle from the player panel button") + "</blockquote>",
 		"playlist": "<blockquote><b>⊚ " + smallcaps("playlist") + "</b></blockquote>\n" +
 			"<blockquote expandable>⟒ <b>/playlist</b> — " + smallcaps("build your custom playlist") + "\n" +
 			"⟒ " + smallcaps("send song names one by one after the command") + "\n" +
