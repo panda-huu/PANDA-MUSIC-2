@@ -32,6 +32,48 @@ func typeTubeClient() *typetube.Client {
 	return typeTube
 }
 
+func normalizeSearchTitle(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	space := false
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r > 127 {
+			b.WriteRune(r)
+			space = false
+		} else if !space {
+			b.WriteByte(' ')
+			space = true
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+func titleMatchScore(query, title string) float64 {
+	q := normalizeSearchTitle(query)
+	t := normalizeSearchTitle(title)
+	if q == "" || t == "" {
+		return 0
+	}
+	if q == t || strings.Contains(t, q) {
+		return 1
+	}
+	qWords := strings.Fields(q)
+	tWords := make(map[string]bool, len(strings.Fields(t)))
+	for _, word := range strings.Fields(t) {
+		tWords[word] = true
+	}
+	matched := 0
+	for _, word := range qWords {
+		if tWords[word] {
+			matched++
+		}
+	}
+	if len(qWords) == 0 {
+		return 0
+	}
+	return float64(matched) / float64(len(qWords))
+}
+
 func searchYT(query string) (urlStr, title, duration, thumbnail string, playlist []ytItem, err error) {
 	q := strings.TrimSpace(query)
 	if q == "" {
@@ -85,6 +127,17 @@ func searchYT(query string) (urlStr, title, duration, thumbnail string, playlist
 	}
 	if len(playlist) == 0 {
 		return "", "", "", "", nil, fmt.Errorf("TypeTube returned no valid video IDs")
+	}
+
+	// TypeTube may return loosely related tracks before the exact title.
+	// Rank by query-token coverage so /play selects the closest title instead
+	// of blindly playing the first search result.
+	sort.SliceStable(playlist, func(i, j int) bool {
+		return titleMatchScore(q, playlist[i].Title) > titleMatchScore(q, playlist[j].Title)
+	})
+	bestScore := titleMatchScore(q, playlist[0].Title)
+	if bestScore < 0.34 {
+		return "", "", "", "", nil, fmt.Errorf("no close title match for %q (best result: %q)", q, playlist[0].Title)
 	}
 	first := playlist[0]
 	return first.Link, first.Title, first.Duration, first.Thumbnail, playlist, nil
