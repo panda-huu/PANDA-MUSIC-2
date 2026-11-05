@@ -1,15 +1,8 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"log"
-	"net/http"
 	"os"
-	"strings"
-	"time"
 )
 
 func fetchYouTubeMix(videoID string, limit int) []ytItem {
@@ -86,113 +79,6 @@ func walkMix(v any, out *[]ytItem, limit int) {
 			}
 		}
 	}
-}
-
-func pickAutoplayCandidate(chatID int64, last *Song) *Song {
-	if last == nil {
-		return nil
-	}
-	vid := extractVideoID(last.URL)
-	seen := map[string]bool{}
-	if vid != "" {
-		seen[vid] = true
-	}
-	add := func(item ytItem) *Song {
-		id := extractVideoID(item.Link)
-		if id == "" || seen[id] || apIsPlayed(chatID, id) {
-			return nil
-		}
-		seen[id] = true
-		apMarkPlayed(chatID, id)
-		return &Song{
-			URL:         item.Link,
-			Title:       item.Title,
-			Duration:    isoToHuman(item.Duration),
-			Requester:   "🎵 ᴀᴜᴛᴏᴘʟᴀʏ",
-			RequesterID: last.RequesterID,
-			Thumbnail:   item.Thumbnail,
-			Video:       last.Video,
-		}
-	}
-	mix := fetchYouTubeMix(vid, 15)
-	for i, item := range mix {
-		if i >= 15 {
-			break
-		}
-		if s := add(item); s != nil {
-			return s
-		}
-	}
-	query := strings.TrimSpace(last.Title)
-	if query == "" {
-		query = "trending songs"
-	}
-	for _, q := range []string{query, query + " songs", query + " mix"} {
-		urlStr, title, dur, thumb, list, err := searchYT(q)
-		if err != nil {
-			continue
-		}
-		items := list
-		if len(items) == 0 && urlStr != "" {
-			items = []ytItem{{Link: urlStr, Title: title, Duration: dur, Thumbnail: thumb}}
-		}
-		for _, item := range items {
-			if s := add(item); s != nil {
-				return s
-			}
-		}
-	}
-	return nil
-}
-
-func takeAutoplayNext(chatID int64) *Song {
-	if !isAutoplay(chatID) {
-		return nil
-	}
-	cur := peekCurrent(chatID)
-	if cur == nil {
-		q := getAutoplayQuery(chatID)
-		if q == "" {
-			return nil
-		}
-		cur = &Song{Title: q, URL: q, Requester: "🎵 ᴀᴜᴛᴏᴘʟᴀʏ"}
-	}
-	s := pickAutoplayCandidate(chatID, cur)
-	if s != nil {
-		addToQueue(chatID, *s)
-		log.Printf("[AutoPlay] queued mix track %s", s.Title)
-		return peekCurrent(chatID)
-	}
-
-	// YouTube Mix can return no results; use normal search as a fallback.
-	added := fetchMore(chatID, "AutoPlay", cur.RequesterID)
-	if added > 0 {
-		log.Printf("[AutoPlay] fallback search queued=%d chat=%d", added, chatID)
-		return peekCurrent(chatID)
-	}
-	log.Printf("[AutoPlay] no recommendations found chat=%d query=%q", chatID, getAutoplayQuery(chatID))
-	return nil
-}
-
-func apMarkPlayed(chatID int64, videoID string) {
-	if videoID == "" {
-		return
-	}
-	apMu.Lock()
-	defer apMu.Unlock()
-	if apFetched[chatID] == nil {
-		apFetched[chatID] = map[string]bool{}
-	}
-	apFetched[chatID][videoID] = true
-}
-
-func apIsPlayed(chatID int64, videoID string) bool {
-	if videoID == "" {
-		return false
-	}
-	apMu.Lock()
-	defer apMu.Unlock()
-	return apFetched[chatID][videoID]
 }
 
 func downloadWithRetry(raw string, video bool) (streamSrc, error) {
