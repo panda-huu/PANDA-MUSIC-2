@@ -76,6 +76,16 @@ func titleMatchScore(query, title string) float64 {
 
 func searchYT(query string) (urlStr, title, duration, thumbnail string, playlist []ytItem, err error) {
 	q := strings.TrimSpace(query)
+
+	// Exact user-provided title alias: avoid ambiguous search results for this
+	// particular track and resolve the exact YouTube video ID supplied by user.
+	normalizedQuery := normalizeSearchTitle(q)
+	if normalizedQuery == "brij ke rasiya mere mann basiya" ||
+		normalizedQuery == "brij ke rasiya mere man basiya" {
+		link := "https://www.youtube.com/watch?v=fkE2BtnakAk"
+		return link, "Brij Ke Rasiya Mere Mann Basiya", "0:00",
+			thumbFor(link, ""), nil, nil
+	}
 	if q == "" {
 		return "", "", "", "", nil, fmt.Errorf("empty search query")
 	}
