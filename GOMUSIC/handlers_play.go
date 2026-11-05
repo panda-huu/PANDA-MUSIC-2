@@ -94,7 +94,7 @@ type playSearch struct {
 var promotedChats sync.Map
 
 func processPlay(m *telegram.NewMessage, query string, video bool) error {
-	chatID := m.ChatID()
+	chatID := canonChatID(m.ChatID())
 	already := isBusy(chatID)
 	if strings.Contains(query, "youtu.be/") {
 		if parts := strings.Split(query, "youtu.be/"); len(parts) > 1 {
