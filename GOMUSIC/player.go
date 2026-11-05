@@ -14,13 +14,13 @@ func nowPlayingCaption(song Song) string {
 	return streamNowPlayingHTML(song)
 }
 
-func nowPlayingKB(chatID int64, elapsed, total float64) telegram.ReplyMarkup {
+func nowPlayingKB(elapsed, total float64) telegram.ReplyMarkup {
 	return gogramMarkup(GetNowPlayingMarkup(progressBar(elapsed, total)))
 }
 
 func sendNowPlaying(chatID int64, song Song) *telegram.NewMessage {
 	caption := nowPlayingCaption(song)
-	kb := nowPlayingKB(chatID, 0, float64(parseDur(song.Duration)))
+	kb := nowPlayingKB(0, float64(parseDur(song.Duration)))
 	if thumbsOff(chatID) {
 		msg, _ := Bot.SendMessage(chatID, caption, &telegram.SendOptions{ParseMode: "HTML", ReplyMarkup: kb})
 		return msg
@@ -175,7 +175,7 @@ func updateProgress(chatID int64, msg *telegram.NewMessage, start time.Time, tot
 			elapsed = total
 		}
 		if msg != nil {
-			if err := editHTML(msg, nowPlayingCaption(song), nowPlayingKB(chatID, elapsed, total)); err != nil && !isNotModified(err) {
+			if err := editHTML(msg, nowPlayingCaption(song), nowPlayingKB(elapsed, total)); err != nil && !isNotModified(err) {
 				log.Println("progress edit failed", chatID, err)
 			}
 		}
