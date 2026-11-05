@@ -151,7 +151,6 @@ func takeAutoplayNext(chatID int64) *Song {
 	}
 	cur := peekCurrent(chatID)
 	if cur == nil {
-		// last popped already; use stored query
 		q := getAutoplayQuery(chatID)
 		if q == "" {
 			return nil
@@ -159,12 +158,20 @@ func takeAutoplayNext(chatID int64) *Song {
 		cur = &Song{Title: q, URL: q, Requester: "🎵 ᴀᴜᴛᴏᴘʟᴀʏ"}
 	}
 	s := pickAutoplayCandidate(chatID, cur)
-	if s == nil {
-		return nil
+	if s != nil {
+		addToQueue(chatID, *s)
+		log.Printf("[AutoPlay] queued mix track %s", s.Title)
+		return peekCurrent(chatID)
 	}
-	addToQueue(chatID, *s)
-	log.Printf("[AutoPlay] queued mix track %s\n", s.Title)
-	return peekCurrent(chatID)
+
+	// YouTube Mix can return no results; use normal search as a fallback.
+	added := fetchMore(chatID, "AutoPlay", cur.RequesterID)
+	if added > 0 {
+		log.Printf("[AutoPlay] fallback search queued=%d chat=%d", added, chatID)
+		return peekCurrent(chatID)
+	}
+	log.Printf("[AutoPlay] no recommendations found chat=%d query=%q", chatID, getAutoplayQuery(chatID))
+	return nil
 }
 
 func apMarkPlayed(chatID int64, videoID string) {
