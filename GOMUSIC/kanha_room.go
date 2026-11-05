@@ -9,6 +9,7 @@ import (
 )
 
 func RoomPlay(chatID int64, song Song, force bool, msg *telegram.NewMessage) error {
+	chatID = canonChatID(chatID)
 	unlock := lockChatPlay(chatID)
 	defer unlock()
 
