@@ -231,23 +231,3 @@ func handleBlocklist(m *telegram.NewMessage) error {
 	return nil
 }
 
-func handleBroadcast(m *telegram.NewMessage) error {
-	if !isOwner(userIDOf(m)) {
-		return nil
-	}
-	text := cmdArgs(m)
-	if text == "" {
-		_, _ = sendHTML(Bot, m.ChatID(), richHeading("usage", 3)+richNote("<code>/broadcast text</code>"), nil)
-		return nil
-	}
-	n := 0
-	for _, id := range getBroadcastChats() {
-		if _, err := sendHTML(Bot, id, text, nil); err == nil {
-			n++
-		}
-	}
-	_, _ = sendHTML(Bot, m.ChatID(), richHeading("broadcast done", 3)+richKVTable([][2]string{{"sent", fmt.Sprintf("<code>%d</code>", n)}}), nil)
-	return nil
-}
-
-
