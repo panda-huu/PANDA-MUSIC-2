@@ -65,6 +65,8 @@ func registerHandlers() {
 	Bot.On("message:/blocklist", live(handleBlocklist))
 	Bot.On("message:/broadcast", live(handleBroadcast))
 	Bot.On("message:/gcast", live(handleBroadcast))
+	Bot.On("message:/ubroadcast", live(handleUserBroadcast))
+	Bot.On("message:/gbroadcast", live(handleGroupBroadcast))
 	Bot.On("message:/stats", live(handleStats))
 	Bot.On("message:/couple", live(handleCouple))
 	Bot.On("message:/couples", live(handleCouple))
