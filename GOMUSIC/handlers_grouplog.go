@@ -138,20 +138,43 @@ func exportInvite(chatID int64) string {
 func refreshGroupMeta(chatID int64) cachedGroup {
 	chatID = canonChatID(chatID)
 	cur := cachedGroupOf(chatID)
-	if Bot == nil {
+	if Bot == nil || chatID == 0 {
 		return cur
 	}
-	if ch, err := Bot.GetChannel(chatID); err == nil && ch != nil {
-		if strings.TrimSpace(ch.Title) != "" {
-			cur.Title = ch.Title
+
+	// Telegram channel IDs are the positive numeric ID without the -100 prefix.
+	// Gogram's GetChannel expects that raw channel ID, not the marked chat ID.
+	rawChannelID := int64(0)
+	if chatID <= -1000000000000 {
+		rawChannelID = -chatID - 1000000000000
+	}
+	if rawChannelID > 0 {
+		if ch, err := Bot.GetChannel(rawChannelID); err == nil && ch != nil {
+			if title := strings.TrimSpace(ch.Title); title != "" {
+				cur.Title = title
+			}
+			if username := strings.TrimSpace(ch.Username); username != "" {
+				cur.Uname = username
+			}
 		}
-		if strings.TrimSpace(ch.Username) != "" {
-			cur.Uname = ch.Username
+	}
+
+	// Try both marked and raw IDs as a fallback for basic groups and library versions.
+	ids := []int64{chatID}
+	if rawChannelID > 0 {
+		ids = append(ids, rawChannelID)
+	}
+	for _, id := range ids {
+		if chat, err := Bot.GetChat(id); err == nil && chat != nil {
+			if title := strings.TrimSpace(chat.Title); title != "" {
+				cur.Title = title
+				break
+			}
 		}
-	} else if chat, err := Bot.GetChat(chatID); err == nil && chat != nil {
-		if strings.TrimSpace(chat.Title) != "" {
-			cur.Title = chat.Title
-		}
+	}
+
+	if cur.Title == "" {
+		cur.Title = "Unknown Group"
 	}
 	if cur.Uname != "" {
 		cur.Invite = "https://t.me/" + strings.TrimPrefix(cur.Uname, "@")
