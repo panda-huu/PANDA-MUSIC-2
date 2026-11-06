@@ -67,6 +67,7 @@ var (
 	Calls             *callAPI
 	botStartTime      = time.Now()
 	assistantUsername string
+	botUsername       string
 	assistantID       int64
 	activeCalls       = map[int64]telegram.InputGroupCall{}
 )
