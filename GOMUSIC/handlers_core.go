@@ -70,6 +70,7 @@ func registerHandlers() {
 	Bot.On("message:/stats", live(handleStats))
 	Bot.On("message:/couple", live(handleCouple))
 	Bot.On("message:/couples", live(handleCouple))
+	Bot.On(telegram.OnNewMessage, live(handleTrackServed))
 	Bot.On(telegram.OnNewMessage, live(handleWelcomeListen))
 	Bot.On(telegram.OnNewMessage, live(handlePlaylistListen))
 	Bot.On(telegram.OnParticipant, handleParticipant)
@@ -401,12 +402,21 @@ func handleHelp(m *telegram.NewMessage) error {
 }
 
 func handleTrackServed(m *telegram.NewMessage) error {
-	if m == nil || m.Sender == nil {
+	if m == nil {
 		return nil
 	}
-	_ = addServedUser(m.Sender.ID)
+	if m.Sender != nil {
+		_ = addServedUser(m.Sender.ID)
+		rememberUser(m.Sender.ID, senderFullName(m), senderUsername(m))
+	}
 	if !m.IsPrivate() {
-		addServedChat(canonChatID(m.ChatID()))
+		chatID := canonChatID(m.ChatID())
+		addServedChat(chatID)
+		if m.Channel != nil {
+			rememberGroup(chatID, m.Channel.Title, m.Channel.Username, "")
+		} else if m.Chat != nil {
+			rememberGroup(chatID, m.Chat.Title, "", "")
+		}
 	}
 	return nil
 }
