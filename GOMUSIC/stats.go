@@ -47,10 +47,7 @@ func statsAssistantCount() int {
 }
 
 func statsSudoCount() int {
-	if OwnerID > 0 {
-		return 1
-	}
-	return 0
+	return int(getSudoersCount())
 }
 
 func statsBlockedCount() int {
