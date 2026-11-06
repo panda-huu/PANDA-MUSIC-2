@@ -250,18 +250,4 @@ func handleBroadcast(m *telegram.NewMessage) error {
 	return nil
 }
 
-func handleStats(m *telegram.NewMessage) error {
-	if !isOwner(userIDOf(m)) {
-		return nil
-	}
-	var ms runtime.MemStats
-	runtime.ReadMemStats(&ms)
-	_, _ = sendHTML(Bot, m.ChatID(), richHeading("stats", 3)+richKVTable([][2]string{
-		{"chats", fmt.Sprintf("<code>%d</code>", getServedChatsCount())},
-		{"users", fmt.Sprintf("<code>%d</code>", getServedUsersCount())},
-		{"plays", fmt.Sprintf("<code>%d</code>", getTotalPlays())},
-		{"ram", fmt.Sprintf("<code>%.2f MB</code>", float64(ms.Alloc)/1024/1024)},
-		{"go", "<code>" + runtime.Version() + "</code>"},
-	}), nil)
-	return nil
-}
+
