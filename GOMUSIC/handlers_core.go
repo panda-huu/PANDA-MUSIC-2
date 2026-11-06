@@ -66,7 +66,6 @@ func registerHandlers() {
 	Bot.On("message:/broadcast", live(handleBroadcast))
 	Bot.On("message:/gcast", live(handleBroadcast))
 	Bot.On("message:/stats", live(handleStats))
-	Bot.On(telegram.OnNewMessage, live(handleTrackServed))
 	Bot.On("message:/couple", live(handleCouple))
 	Bot.On("message:/couples", live(handleCouple))
 	Bot.On(telegram.OnNewMessage, live(handleWelcomeListen))
@@ -396,5 +395,16 @@ func handleHelp(m *telegram.NewMessage) error {
 	}
 	sendStartMenu(m.ChatID(), helpInner(userIDOf(m), userNameOf(m)), GetHelpMarkup())
 	_, _ = m.Delete()
+	return nil
+}
+
+func handleTrackServed(m *telegram.NewMessage) error {
+	if m == nil || m.Sender == nil {
+		return nil
+	}
+	_ = addServedUser(m.Sender.ID)
+	if !m.IsPrivate() {
+		addServedChat(canonChatID(m.ChatID()))
+	}
 	return nil
 }
