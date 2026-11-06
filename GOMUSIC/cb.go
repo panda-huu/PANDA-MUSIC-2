@@ -75,6 +75,9 @@ func handleCallbackQuery(cb *telegram.CallbackQuery) error {
 	if handleWelcomeCallback(cb, data) {
 		return nil
 	}
+	if handleStatsCallback(cb, data) {
+		return nil
+	}
 	msg, _ := cb.GetMessage()
 	chatID := callbackChatID(cb, msg)
 	log.Printf("player callback data=%q chat_id=%d message_chat_id=%d", data, chatID, func() int64 {
