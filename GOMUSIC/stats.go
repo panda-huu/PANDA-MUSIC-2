@@ -128,4 +128,3 @@ func handleStatsCallback(cb *telegram.CallbackQuery, data string) bool {
 	return true
 }
 
-var _ = filepath.Separator
