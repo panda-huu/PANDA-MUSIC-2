@@ -54,6 +54,14 @@ func normalizeTelegramURL(raw, fallback string) string {
 	return raw
 }
 
+func webMusicPanelURL() string {
+	username := strings.TrimSpace(strings.TrimPrefix(botUsername, "@"))
+	if username == "" {
+		return "https://t.me/"
+	}
+	return "https://t.me/" + username + "/xmusic"
+}
+
 func ownerURL() string {
 	if u := strings.TrimSpace(OwnerUsername); u != "" {
 		return normalizeTelegramURL(u, "https://t.me/")
