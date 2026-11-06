@@ -70,7 +70,7 @@ func GetStartMarkup() [][]InlineBtn {
 	updatesURL := normalizeTelegramURL(UpdatesChannel, "https://t.me/sxypndu")
 	supportURL := normalizeTelegramURL(SupportGroup, "https://t.me/crzy_soul")
 	developerURL := "https://t.me/ll_PANDA_BBY_ll"
-	webMusicURL := "https://t.me/RADHIKA_688U_MUSIC_BOT/xmusic"
+	webMusicURL := webMusicPanelURL()
 
 	return [][]InlineBtn{
 		{styleBtn(btnAddMe, "start_add_group", ColourRed)},
@@ -100,6 +100,7 @@ func GetNowPlayingMarkup(bar string) [][]InlineBtn {
 	return [][]InlineBtn{
 		{styleBtn(bar,"progress",ColourGreen)},
 		{styleBtn("▷","resume",ColourRed),styleBtn("II","pause",ColourBlue),styleBtn("⟳","replay",ColourGreen),styleBtn("‣‣I","skip",ColourGreen),styleBtn("▢","stop",ColourRed)},
+		{styleURLBtn("ᴡᴇʙ ᴍᴜsɪᴄ", webMusicPanelURL(), ColourBlue)},
 		{styleBtn(btnSeekBack,"seek_back",ColourBlue),styleBtn(btnSeekFwd,"seek_fwd",ColourGreen)},
 		{styleBtn(btnClose,"close",ColourRed)},
 	}
