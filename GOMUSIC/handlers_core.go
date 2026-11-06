@@ -362,7 +362,9 @@ func handleStart(m *telegram.NewMessage) error {
 	name := userNameOf(m)
 	chatID := m.ChatID()
 	_ = addServedUser(uid)
-	addServedChat(chatID)
+	if !m.IsPrivate() {
+		addServedChat(canonChatID(chatID))
+	}
 	rememberUser(uid, senderFullName(m), senderUsername(m))
 	arg := strings.ToLower(cmdArgs(m))
 	if m.IsPrivate() {
