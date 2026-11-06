@@ -25,7 +25,7 @@ var (
 	storeDB        *sql.DB
 )
 
-const dbPrefix = "gomusicv2_"
+const dbPrefix = "radhika_"
 
 func startStore() error {
 	host := os.Getenv("DB_HOST")
@@ -96,7 +96,10 @@ func loadStoreData(ctx context.Context) error {
 	memMu.Lock()
 	defer memMu.Unlock()
 	if err := loadIDs(dbPrefix+"served_users", "user_id", servedUsers); err != nil { return fmt.Errorf("load served users: %w", err) }
-	if err := loadIDs(dbPrefix+"served_chats", "chat_id", servedChats); err != nil { return fmt.Errorf("load served chats: %w", err) }
+	rowsChats, err := storeDB.QueryContext(ctx, "SELECT chat_id FROM "+dbPrefix+"served_chats WHERE chat_id < 0")
+	if err != nil { return fmt.Errorf("load served chats: %w", err) }
+	for rowsChats.Next() { var id int64; if err := rowsChats.Scan(&id); err != nil { rowsChats.Close(); return err }; servedChats[id] = struct{}{} }
+	if err := rowsChats.Err(); err != nil { rowsChats.Close(); return err }; rowsChats.Close()
 	if err := loadIDs(dbPrefix+"blocked_groups", "chat_id", blockedGroups); err != nil { return fmt.Errorf("load blocked groups: %w", err) }
 	if err := loadIDs(dbPrefix+"blocked_users", "user_id", blockedUsers); err != nil { return fmt.Errorf("load blocked users: %w", err) }
 	rows, err := storeDB.QueryContext(ctx, "SELECT chat_id, plays FROM "+dbPrefix+"play_counts")
@@ -140,6 +143,22 @@ func incrementPlayCount(chatID int64) {
 }
 
 func getServedChatsCount() int64 { memMu.Lock(); defer memMu.Unlock(); return int64(len(servedChats)) }
+
+func getSudoersCount() int64 {
+	if storeDB == nil { return 0 }
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var count sql.NullInt64
+	err := storeDB.QueryRowContext(ctx, "SELECT COALESCE(array_length(sudoers, 1), 0) FROM "+dbPrefix+"sudoers WHERE id='sudo'").Scan(&count)
+	if err != nil { return 0 }
+	n := count.Int64
+	if owner, err := strconv.ParseInt(os.Getenv("OWNER_ID"), 10, 64); err == nil && owner > 0 {
+		var exists bool
+		_ = storeDB.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM "+dbPrefix+"sudoers WHERE id='sudo' AND $1 = ANY(sudoers))", owner).Scan(&exists)
+		if !exists { n++ }
+	}
+	return n
+}
 func getServedUsersCount() int64 { memMu.Lock(); defer memMu.Unlock(); return int64(len(servedUsers)) }
 func getTotalPlays() int64 { memMu.Lock(); defer memMu.Unlock(); var n int64; for _, v := range playCounts { n += v }; return n }
 
