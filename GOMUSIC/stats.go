@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
+	"log"
 	"runtime"
 	"strconv"
 	"strings"
@@ -122,7 +122,7 @@ func handleStatsCallback(cb *telegram.CallbackQuery, data string) bool {
 	if err := editMenu(cb, text, statsKeyboard()); err != nil {
 		// A text message may not have a caption; editMenu handles both through
 		// the existing message edit helper and the fallback below.
-		logStatsEditError(err)
+		log.Printf("[stats] edit failed: %v", err)
 	}
 	_, _ = cb.Answer("")
 	return true
