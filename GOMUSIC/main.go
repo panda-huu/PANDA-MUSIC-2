@@ -26,8 +26,11 @@ func main() {
 		log.Println("start/play logs will go to", LoggerID)
 	}
 
-	startStore()
-	log.Println("Memory store ready (no MongoDB).")
+	if err := startStore(); err != nil {
+		log.Fatalf("PostgreSQL initialization failed: %v", err)
+	}
+	defer func() { if storeDB != nil { _ = storeDB.Close() } }()
+	log.Println("PostgreSQL store ready.")
 
 	go func() {
 		mux := http.NewServeMux()
