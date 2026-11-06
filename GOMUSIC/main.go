@@ -108,6 +108,7 @@ func runBot() (retErr error) {
 		return fmt.Errorf("bot GetMe failed: %w", err)
 	}
 	// Always use Telegram's live bot profile name in the /start menu.
+	botUsername = strings.TrimSpace(me.Username)
 	BotName = strings.TrimSpace(me.FirstName)
 	if BotName == "" {
 		BotName = strings.TrimSpace(me.Username)
