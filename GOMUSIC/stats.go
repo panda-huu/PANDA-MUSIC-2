@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/amarnathcjd/gogram/telegram"
 )
@@ -191,19 +190,6 @@ func statsGeneralText(username string) string {
 		statsGib(diskTotal), statsGib(diskUsed), statsGib(diskFree),
 		chats, users, len(getBlockedUsers()), sudos,
 	)
-}
-
-// Track all incoming user activity so Supabase counts stay in sync with
-// PANDA-MUSICV4's served-users and served-chats counters.
-func handleTrackServed(m *telegram.NewMessage) error {
-	if m == nil || m.Sender == nil {
-		return nil
-	}
-	_ = addServedUser(m.Sender.ID)
-	if !m.IsPrivate() {
-		addServedChat(canonChatID(m.ChatID()))
-	}
-	return nil
 }
 
 func handleStats(m *telegram.NewMessage) error {
