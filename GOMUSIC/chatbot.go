@@ -105,6 +105,8 @@ func isReplyToBot(m *telegram.NewMessage) bool {
 }
 
 // chatbotShouldReply checks mention / reply-to-bot / trigger word.
+// Also returns true when the message has media (photo) with no text, so
+// image-only mentions are not silently dropped.
 func chatbotShouldReply(m *telegram.NewMessage) bool {
 	text := strings.ToLower(strings.TrimSpace(m.Text()))
 
@@ -126,7 +128,42 @@ func chatbotShouldReply(m *telegram.NewMessage) bool {
 			return true
 		}
 	}
+	// image/media with bot mention in caption
+	if m.Message != nil && m.Message.Media != nil && text == "" {
+		return false // media with no mention/caption → skip
+	}
 	return false
+}
+
+// mediaDescription returns a short human-readable label for the attached
+// media so ARU-AI knows what kind of content the user sent.
+func mediaDescription(m *telegram.NewMessage) string {
+	if m == nil || m.Message == nil || m.Message.Media == nil {
+		return ""
+	}
+	switch m.Message.Media.(type) {
+	case *telegram.MessageMediaPhoto:
+		return "[image attached]"
+	case *telegram.MessageMediaDocument:
+		if m.File != nil {
+			name := strings.ToLower(strings.TrimSpace(m.File.Name))
+			switch {
+			case strings.Contains(name, ".mp4"), strings.Contains(name, ".mkv"),
+				strings.Contains(name, ".mov"), strings.Contains(name, ".avi"):
+				return "[video attached]"
+			case strings.Contains(name, ".mp3"), strings.Contains(name, ".ogg"),
+				strings.Contains(name, ".opus"), strings.Contains(name, ".flac"):
+				return "[audio attached]"
+			}
+			return "[file attached: " + m.File.Name + "]"
+		}
+		return "[document attached]"
+	case *telegram.MessageMediaGeo, *telegram.MessageMediaGeoLive:
+		return "[location attached]"
+	case *telegram.MessageMediaContact:
+		return "[contact attached]"
+	}
+	return "[media attached]"
 }
 
 // sendTyping sends a typing chat action — signature: (InputPeer, int32, SendMessageAction).
@@ -199,7 +236,28 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 	}
 
 	text := strings.TrimSpace(m.Text())
-	if text == "" || strings.HasPrefix(text, "/") || strings.HasPrefix(text, "!") || strings.HasPrefix(text, ".") {
+	mediaMeta := mediaDescription(m)
+
+	// build the effective input text:
+	// - text only  → use as-is
+	// - media + caption → "caption [image attached]"
+	// - media only (no caption) → "[image attached]"
+	var effectiveText string
+	switch {
+	case text != "" && mediaMeta != "":
+		effectiveText = text + " " + mediaMeta
+	case text != "":
+		effectiveText = text
+	case mediaMeta != "":
+		effectiveText = mediaMeta
+	default:
+		return nil
+	}
+
+	// skip bare commands
+	if strings.HasPrefix(effectiveText, "/") ||
+		strings.HasPrefix(effectiveText, "!") ||
+		strings.HasPrefix(effectiveText, ".") {
 		return nil
 	}
 	if blocked(m) {
@@ -213,13 +271,31 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 
 	isPrivate := m.IsPrivate()
 	if !isPrivate && !chatbotShouldReply(m) {
-		return nil
+		// for media messages check caption for mention too
+		if mediaMeta == "" {
+			return nil
+		}
+		captionLow := strings.ToLower(text)
+		mentioned := false
+		if u := strings.ToLower(strings.TrimSpace(botUsername)); u != "" && strings.Contains(captionLow, "@"+u) {
+			mentioned = true
+		}
+		if n := strings.ToLower(strings.TrimSpace(BotName)); len(n) > 2 && strings.Contains(captionLow, n) {
+			mentioned = true
+		}
+		if isReplyToBot(m) {
+			mentioned = true
+		}
+		if !mentioned {
+			return nil
+		}
 	}
 
 	// capture before goroutine
 	userID := userIDOf(m)
 	name := senderFullName(m)
 	authorized := isOwner(userID) || (!isPrivate && isAuthorized(m))
+	replyToID := m.Message.ID // for replying to the user's message
 
 	sendTyping(chatID)
 
@@ -231,7 +307,7 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 			role = "group admin"
 		}
 
-		prompt := fmt.Sprintf("[bot: %s | user: %s | role: %s] %s", BotName, name, role, text)
+		prompt := fmt.Sprintf("[bot: %s | user: %s | role: %s] %s", BotName, name, role, effectiveText)
 
 		stop := make(chan struct{})
 		go func() {
@@ -257,7 +333,10 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 		if reply == "" {
 			return
 		}
-		if _, err := sendHTML(Bot, chatID, richEsc(reply), nil); err != nil {
+
+		// reply directly to the user's message so it threads correctly
+		opts := &telegram.SendOptions{ReplyID: replyToID}
+		if _, err := sendHTML(Bot, chatID, richEsc(reply), opts); err != nil {
 			log.Println("[chatbot] send failed:", err)
 		}
 	}()
