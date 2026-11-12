@@ -105,8 +105,6 @@ func isReplyToBot(m *telegram.NewMessage) bool {
 }
 
 // chatbotShouldReply checks mention / reply-to-bot / trigger word.
-// Also returns true when the message has media (photo) with no text, so
-// image-only mentions are not silently dropped.
 func chatbotShouldReply(m *telegram.NewMessage) bool {
 	text := strings.ToLower(strings.TrimSpace(m.Text()))
 
@@ -128,40 +126,38 @@ func chatbotShouldReply(m *telegram.NewMessage) bool {
 			return true
 		}
 	}
-	// image/media with bot mention in caption
-	if m.Message != nil && m.Message.Media != nil && text == "" {
-		return false // media with no mention/caption → skip
-	}
 	return false
 }
 
-// mediaDescription returns a short human-readable label for the attached
-// media so ARU-AI knows what kind of content the user sent.
+// mediaDescription returns a short label for the media type using only
+// gogram types that are safe to reference across all versions.
 func mediaDescription(m *telegram.NewMessage) string {
 	if m == nil || m.Message == nil || m.Message.Media == nil {
 		return ""
 	}
-	switch m.Message.Media.(type) {
-	case *telegram.MessageMediaPhoto:
+	// Use the library's high-level helpers instead of raw type assertions
+	// so we avoid importing types that may not exist in the pinned beta.
+	mt := strings.ToLower(strings.TrimSpace(m.MediaType()))
+	switch {
+	case mt == "photo":
 		return "[image attached]"
-	case *telegram.MessageMediaDocument:
-		if m.File != nil {
-			name := strings.ToLower(strings.TrimSpace(m.File.Name))
-			switch {
-			case strings.Contains(name, ".mp4"), strings.Contains(name, ".mkv"),
-				strings.Contains(name, ".mov"), strings.Contains(name, ".avi"):
-				return "[video attached]"
-			case strings.Contains(name, ".mp3"), strings.Contains(name, ".ogg"),
-				strings.Contains(name, ".opus"), strings.Contains(name, ".flac"):
-				return "[audio attached]"
-			}
+	case mt == "video":
+		return "[video attached]"
+	case mt == "audio":
+		return "[audio attached]"
+	case mt == "voice":
+		return "[voice message attached]"
+	case mt == "document":
+		if m.File != nil && strings.TrimSpace(m.File.Name) != "" {
 			return "[file attached: " + m.File.Name + "]"
 		}
 		return "[document attached]"
-	case *telegram.MessageMediaGeo, *telegram.MessageMediaGeoLive:
+	case mt == "geo" || mt == "geolive":
 		return "[location attached]"
-	case *telegram.MessageMediaContact:
+	case mt == "contact":
 		return "[contact attached]"
+	case mt != "":
+		return "[" + mt + " attached]"
 	}
 	return "[media attached]"
 }
@@ -238,10 +234,10 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 	text := strings.TrimSpace(m.Text())
 	mediaMeta := mediaDescription(m)
 
-	// build the effective input text:
-	// - text only  → use as-is
-	// - media + caption → "caption [image attached]"
-	// - media only (no caption) → "[image attached]"
+	// build effective input:
+	// text + media  → "caption [image attached]"
+	// text only     → caption
+	// media only    → "[image attached]"
 	var effectiveText string
 	switch {
 	case text != "" && mediaMeta != "":
@@ -270,23 +266,25 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 	}
 
 	isPrivate := m.IsPrivate()
-	if !isPrivate && !chatbotShouldReply(m) {
-		// for media messages check caption for mention too
-		if mediaMeta == "" {
-			return nil
+
+	if !isPrivate {
+		// for group messages: check text-based triggers first
+		shouldReply := chatbotShouldReply(m)
+
+		// for media messages with no triggering text, check caption for mention
+		if !shouldReply && mediaMeta != "" {
+			captionLow := strings.ToLower(text)
+			if u := strings.ToLower(strings.TrimSpace(botUsername)); u != "" && strings.Contains(captionLow, "@"+u) {
+				shouldReply = true
+			}
+			if n := strings.ToLower(strings.TrimSpace(BotName)); len(n) > 2 && strings.Contains(captionLow, n) {
+				shouldReply = true
+			}
+			if isReplyToBot(m) {
+				shouldReply = true
+			}
 		}
-		captionLow := strings.ToLower(text)
-		mentioned := false
-		if u := strings.ToLower(strings.TrimSpace(botUsername)); u != "" && strings.Contains(captionLow, "@"+u) {
-			mentioned = true
-		}
-		if n := strings.ToLower(strings.TrimSpace(BotName)); len(n) > 2 && strings.Contains(captionLow, n) {
-			mentioned = true
-		}
-		if isReplyToBot(m) {
-			mentioned = true
-		}
-		if !mentioned {
+		if !shouldReply {
 			return nil
 		}
 	}
@@ -295,7 +293,7 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 	userID := userIDOf(m)
 	name := senderFullName(m)
 	authorized := isOwner(userID) || (!isPrivate && isAuthorized(m))
-	replyToID := m.Message.ID // for replying to the user's message
+	replyToID := m.Message.ID // thread reply back to user's message
 
 	sendTyping(chatID)
 
