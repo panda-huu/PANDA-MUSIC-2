@@ -236,6 +236,8 @@ func setBotCommands() {
 		{Command: "skip", Description: "skip song"},
 		{Command: "stop", Description: "stop and clear"},
 		{Command: "ping", Description: "bot stats"},
+		{Command: "chaton", Description: "enable ARU-AI chatbot"},
+		{Command: "chatoff", Description: "disable ARU-AI chatbot"},
 	}
 	_, err := Bot.BotsSetBotCommands(&telegram.BotCommandScopeDefault{}, "", cmds)
 	if err != nil {
