@@ -130,13 +130,11 @@ func chatbotShouldReply(m *telegram.NewMessage) bool {
 }
 
 // mediaDescription returns a short label for the media type using only
-// gogram types that are safe to reference across all versions.
+// gogram helpers — no raw type assertions against versioned constructors.
 func mediaDescription(m *telegram.NewMessage) string {
 	if m == nil || m.Message == nil || m.Message.Media == nil {
 		return ""
 	}
-	// Use the library's high-level helpers instead of raw type assertions
-	// so we avoid importing types that may not exist in the pinned beta.
 	mt := strings.ToLower(strings.TrimSpace(m.MediaType()))
 	switch {
 	case mt == "photo":
@@ -162,13 +160,28 @@ func mediaDescription(m *telegram.NewMessage) string {
 	return "[media attached]"
 }
 
-// sendTyping sends a typing chat action — signature: (InputPeer, int32, SendMessageAction).
+// sendTyping sends a typing chat action.
 func sendTyping(chatID int64) {
 	peer, err := Bot.ResolvePeer(chatID)
 	if err != nil || peer == nil {
 		return
 	}
 	_, _ = Bot.MessagesSetTyping(peer, 0, &telegram.SendMessageTypingAction{})
+}
+
+// chatbotSendReply sends text as a threaded reply to replyToID.
+// sendHTML takes a telegram.ReplyMarkup as its last arg, so we build a
+// proper ReplyMarkup (nil = no keyboard) and pass ReplyID via SendOptions
+// through Bot.SendMessage directly.
+func chatbotSendReply(chatID int64, replyToID int32, text string) error {
+	ents, plain := captionEntities(text)
+	_, err := Bot.SendMessage(chatID, plain, &telegram.SendOptions{
+		ParseMode:   "",
+		Entities:    ents,
+		ReplyID:     replyToID,
+		ReplyMarkup: nil,
+	})
+	return err
 }
 
 func handleChatbotOn(m *telegram.NewMessage) error {
@@ -234,10 +247,6 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 	text := strings.TrimSpace(m.Text())
 	mediaMeta := mediaDescription(m)
 
-	// build effective input:
-	// text + media  → "caption [image attached]"
-	// text only     → caption
-	// media only    → "[image attached]"
 	var effectiveText string
 	switch {
 	case text != "" && mediaMeta != "":
@@ -250,7 +259,6 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 		return nil
 	}
 
-	// skip bare commands
 	if strings.HasPrefix(effectiveText, "/") ||
 		strings.HasPrefix(effectiveText, "!") ||
 		strings.HasPrefix(effectiveText, ".") {
@@ -268,10 +276,7 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 	isPrivate := m.IsPrivate()
 
 	if !isPrivate {
-		// for group messages: check text-based triggers first
 		shouldReply := chatbotShouldReply(m)
-
-		// for media messages with no triggering text, check caption for mention
 		if !shouldReply && mediaMeta != "" {
 			captionLow := strings.ToLower(text)
 			if u := strings.ToLower(strings.TrimSpace(botUsername)); u != "" && strings.Contains(captionLow, "@"+u) {
@@ -289,11 +294,10 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 		}
 	}
 
-	// capture before goroutine
 	userID := userIDOf(m)
 	name := senderFullName(m)
 	authorized := isOwner(userID) || (!isPrivate && isAuthorized(m))
-	replyToID := m.Message.ID // thread reply back to user's message
+	replyToID := m.Message.ID
 
 	sendTyping(chatID)
 
@@ -332,9 +336,7 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 			return
 		}
 
-		// reply directly to the user's message so it threads correctly
-		opts := &telegram.SendOptions{ReplyID: replyToID}
-		if _, err := sendHTML(Bot, chatID, richEsc(reply), opts); err != nil {
+		if err := chatbotSendReply(chatID, replyToID, richEsc(reply)); err != nil {
 			log.Println("[chatbot] send failed:", err)
 		}
 	}()
