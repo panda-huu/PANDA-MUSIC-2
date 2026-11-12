@@ -29,49 +29,10 @@ func live(h func(*telegram.NewMessage) error) func(*telegram.NewMessage) error {
 }
 
 func registerHandlers() {
-	Bot.On("message:/start", live(handleStart))
-	Bot.On("message:/help", live(handleHelp))
-	Bot.On("message:/play", live(handlePlay))
-	Bot.On("message:/vplay", live(handleVPlay))
-	Bot.On("message:/vplya", live(handleVPlay))
-	Bot.On("message:/playlist", live(handlePlaylist))
-	Bot.On("message:/welcome", live(handleWelcome))
-	Bot.On("message:/chaton", live(handleChatOn))
-	Bot.On("message:/chatoff", live(handleChatOff))
-	Bot.On("message:/setwelcome", live(handleSetWelcome))
-	Bot.On("message:/resetwelcome", live(handleResetWelcome))
-	Bot.On("message:/pause", live(handlePause))
-	Bot.On("message:/resume", live(handleResume))
-	Bot.On("message:/skip", live(handleSkip))
-	Bot.On("message:/stop", live(handleStop))
-	Bot.On("message:/end", live(handleStop))
-	Bot.On("message:/clear", live(handleClear))
-	Bot.On("message:/queue", live(handleQueue))
-	Bot.On("message:/reboot", live(handleReboot))
-	Bot.On("message:/ping", live(handlePing))
-	Bot.On("message:/id", live(handleID))
-	Bot.On("message:/nothumb", live(handleNoThumb))
-	Bot.On("message:/speed", live(handleSpeed))
-	Bot.On("message:/speedreset", live(handleSpeedReset))
-	Bot.On("message:/bass", live(handleBass))
-	Bot.On("message:/bassoff", live(handleBassOff))
-	Bot.On("message:/effecton", live(handleEffectOn))
-	Bot.On("message:/effectoff", live(handleEffectOff))
-	Bot.On("message:/effects", live(handleEffects))
-	Bot.On("message:/seek", live(handleSeek))
-	Bot.On("message:/seekback", live(handleSeekBack))
-	Bot.On("message:/gblock", live(handleGBlock))
-	Bot.On("message:/gunblock", live(handleGUnblock))
-	Bot.On("message:/ublock", live(handleUBlock))
-	Bot.On("message:/uunblock", live(handleUUnblock))
-	Bot.On("message:/blocklist", live(handleBlocklist))
-	Bot.On("message:/broadcast", live(handleBroadcast))
-	Bot.On("message:/gcast", live(handleBroadcast))
-	Bot.On("message:/ubroadcast", live(handleUserBroadcast))
-	Bot.On("message:/gbroadcast", live(handleGroupBroadcast))
-	Bot.On("message:/stats", live(handleStats))
-	Bot.On("message:/couple", live(handleCouple))
-	Bot.On("message:/couples", live(handleCouple))
+	// A single message dispatcher also handles Telegram's /command@botusername
+	// form used in groups. The old message:/command filters could silently miss
+	// those updates, which made menus and commands appear broken in clones.
+	Bot.On(telegram.OnNewMessage, live(dispatchCommand))
 	Bot.On(telegram.OnNewMessage, live(handleTrackServed))
 	Bot.On(telegram.OnNewMessage, live(handleWelcomeListen))
 	Bot.On(telegram.OnNewMessage, live(handlePlaylistListen))
@@ -81,6 +42,86 @@ func registerHandlers() {
 	Bot.On(telegram.OnAction, handleServiceMessage)
 	Bot.AddRawHandler(&telegram.UpdateChannelParticipant{}, handleRawChannelParticipant)
 	Bot.On(telegram.OnCallbackQuery, handleCallbackQuery)
+}
+
+func dispatchCommand(m *telegram.NewMessage) error {
+	if m == nil {
+		return nil
+	}
+	root := cmdRoot(m)
+	var handler func(*telegram.NewMessage) error
+	switch root {
+	case "start": handler = handleStart
+	case "help": handler = handleHelp
+	case "play": handler = handlePlay
+	case "vplay", "vplya": handler = handleVPlay
+	case "playlist": handler = handlePlaylist
+	case "welcome": handler = handleWelcome
+	case "setwelcome": handler = handleSetWelcome
+	case "resetwelcome": handler = handleResetWelcome
+	case "pause": handler = handlePause
+	case "resume": handler = handleResume
+	case "skip": handler = handleSkip
+	case "stop", "end": handler = handleStop
+	case "clear": handler = handleClear
+	case "queue": handler = handleQueue
+	case "reboot": handler = handleReboot
+	case "ping": handler = handlePing
+	case "repo": handler = handleRepo
+	case "id": handler = handleID
+	case "nothumb": handler = handleNoThumb
+	case "speed": handler = handleSpeed
+	case "speedreset": handler = handleSpeedReset
+	case "bass": handler = handleBass
+	case "bassoff": handler = handleBassOff
+	case "effecton": handler = handleEffectOn
+	case "effectoff": handler = handleEffectOff
+	case "effects": handler = handleEffects
+	case "seek": handler = handleSeek
+	case "seekback": handler = handleSeekBack
+	case "gblock": handler = handleGBlock
+	case "gunblock": handler = handleGUnblock
+	case "ublock": handler = handleUBlock
+	case "uunblock": handler = handleUUnblock
+	case "blocklist": handler = handleBlocklist
+	case "broadcast", "gcast": handler = handleBroadcast
+	case "ubroadcast": handler = handleUserBroadcast
+	case "gbroadcast": handler = handleGroupBroadcast
+	case "stats": handler = handleStats
+	case "couple", "couples": handler = handleCouple
+	case "chaton": handler = handleChatOn
+	case "chatoff": handler = handleChatOff
+	default:
+		return nil
+	}
+
+	groupOnly := map[string]bool{
+		"play": true, "vplay": true, "vplya": true,
+		"pause": true, "resume": true, "skip": true, "stop": true,
+		"end": true, "clear": true, "queue": true, "reboot": true,
+		"speed": true, "speedreset": true, "bass": true, "bassoff": true,
+		"effecton": true, "effectoff": true, "effects": true,
+		"seek": true, "seekback": true, "couple": true, "couples": true,
+		"welcome": true, "setwelcome": true, "resetwelcome": true,
+	}
+	if groupOnly[root] && m.IsPrivate() {
+		_, _ = sendHTML(Bot, m.ChatID(),
+			richHeading("group command", 3)+richNote("This command works in a group. Add the bot to your group and try again."), nil)
+		return nil
+	}
+
+	adminOnly := map[string]bool{
+		"pause": true, "resume": true, "skip": true, "stop": true,
+		"end": true, "clear": true, "speed": true, "speedreset": true,
+		"bass": true, "bassoff": true, "effecton": true, "effectoff": true,
+		"seek": true, "seekback": true, "nothumb": true,
+	}
+	if adminOnly[root] && !isOwner(userIDOf(m)) && !isAuthorized(m) {
+		_, _ = sendHTML(Bot, m.ChatID(),
+			richHeading("admin permission required", 3)+richNote("Only group admins can use this command. Make sure the bot can read group members."), nil)
+		return nil
+	}
+	return handler(m)
 }
 
 func messageDate(m *telegram.NewMessage) int64 {
