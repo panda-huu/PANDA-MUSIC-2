@@ -10,6 +10,13 @@ func editQuotedCaption(cb *telegram.CallbackQuery, inner string, rows [][]Inline
 	if cb == nil {
 		return false
 	}
+	// Menus are initially sent through the Bot API. Edit them through the
+	// same API first so Telegram updates the existing photo caption and
+	// keyboard instead of falling back to a second message. The MTProto edit
+	// remains as a fallback for messages not editable through the Bot API.
+	if fastEditCaption(cb.ChatID, int(cb.MessageID), inner, rows) {
+		return true
+	}
 	err := editMenu(cb, quotedCaption(inner), gogramMarkup(rows))
 	return err == nil
 }
