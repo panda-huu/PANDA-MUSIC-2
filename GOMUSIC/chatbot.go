@@ -93,8 +93,7 @@ func isReplyToBot(m *telegram.NewMessage) bool {
 	if replyID == 0 {
 		return false
 	}
-	chatID := m.ChatID()
-	msgs, err := Bot.GetMessages(chatID, &telegram.SearchOption{IDs: []int32{replyID}})
+	msgs, err := Bot.GetMessages(m.ChatID(), &telegram.SearchOption{IDs: []int32{replyID}})
 	if err != nil || len(msgs) == 0 {
 		return false
 	}
@@ -102,53 +101,41 @@ func isReplyToBot(m *telegram.NewMessage) bool {
 	if err != nil || me == nil {
 		return false
 	}
-	fromID := userIDOf(&msgs[0])
-	return fromID == me.ID
+	return userIDOf(&msgs[0]) == me.ID
 }
 
 // chatbotShouldReply checks mention / reply-to-bot / trigger word.
 func chatbotShouldReply(m *telegram.NewMessage) bool {
 	text := strings.ToLower(strings.TrimSpace(m.Text()))
 
-	// 1. reply to a bot message
 	if isReplyToBot(m) {
 		return true
 	}
-
-	// 2. @mention
 	if u := strings.ToLower(strings.TrimSpace(botUsername)); u != "" {
 		if strings.Contains(text, "@"+u) {
 			return true
 		}
 	}
-
-	// 3. bot display name in text
 	if n := strings.ToLower(strings.TrimSpace(BotName)); len(n) > 2 {
 		if strings.Contains(text, n) {
 			return true
 		}
 	}
-
-	// 4. hardcoded triggers
 	for _, t := range chatbotTriggers {
 		if strings.Contains(text, t) {
 			return true
 		}
 	}
-
 	return false
 }
 
-// sendTyping sends a typing action using the correct gogram API.
+// sendTyping sends a typing chat action — signature: (InputPeer, int32, SendMessageAction).
 func sendTyping(chatID int64) {
 	peer, err := Bot.ResolvePeer(chatID)
 	if err != nil || peer == nil {
 		return
 	}
-	_, _ = Bot.MessagesSetTyping(&telegram.MessagesSetTypingParams{
-		Peer:   peer,
-		Action: &telegram.SendMessageTypingAction{},
-	})
+	_, _ = Bot.MessagesSetTyping(peer, 0, &telegram.SendMessageTypingAction{})
 }
 
 func handleChatbotOn(m *telegram.NewMessage) error {
@@ -234,7 +221,6 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 	name := senderFullName(m)
 	authorized := isOwner(userID) || (!isPrivate && isAuthorized(m))
 
-	// typing — show immediately
 	sendTyping(chatID)
 
 	go func() {
@@ -247,7 +233,6 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 
 		prompt := fmt.Sprintf("[bot: %s | user: %s | role: %s] %s", BotName, name, role, text)
 
-		// keep sending typing every 4s while waiting for ARU response
 		stop := make(chan struct{})
 		go func() {
 			ticker := time.NewTicker(4 * time.Second)
