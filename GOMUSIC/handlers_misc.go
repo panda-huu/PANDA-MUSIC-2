@@ -36,7 +36,7 @@ func handleRepo(m *telegram.NewMessage) error {
 	}
 	body := richHeading("source code", 3) +
 		richNote("GOMUSICV2 is maintained on GitHub.") +
-		\`\`\`<a href="https://github.com/nikhil390u8o/GOMUSICV2">Open repository</a>\`\`\`
+		"<a href=\"https://github.com/nikhil390u8o/GOMUSICV2\">Open repository</a>"
 	_, err := sendHTML(Bot, m.ChatID(), body, nil)
 	return err
 }
@@ -237,4 +237,3 @@ func handleBlocklist(m *telegram.NewMessage) error {
 	}), nil)
 	return nil
 }
-
