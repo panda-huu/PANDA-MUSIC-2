@@ -36,6 +36,7 @@ func registerHandlers() {
 	Bot.On(telegram.OnNewMessage, live(handleTrackServed))
 	Bot.On(telegram.OnNewMessage, live(handleWelcomeListen))
 	Bot.On(telegram.OnNewMessage, live(handlePlaylistListen))
+	Bot.On(telegram.OnNewMessage, live(handleChatbotListen)) // chatbot handler
 	Bot.On(telegram.OnParticipant, handleParticipant)
 	Bot.On(telegram.OnParticipant, handleWelcomeParticipant)
 	Bot.On(telegram.OnAction, handleServiceMessage)
