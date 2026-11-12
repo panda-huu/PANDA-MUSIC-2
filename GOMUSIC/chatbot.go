@@ -84,32 +84,38 @@ func askARU(chatID int64, text string) (string, error) {
 	return strings.TrimSpace(out.Reply), nil
 }
 
-// chatbotShouldReply checks if bot was mentioned, replied to, or name triggered.
+// isReplyToBot returns true if m is a reply to a message sent by the bot.
+func isReplyToBot(m *telegram.NewMessage) bool {
+	if m == nil || m.Message == nil || m.Message.ReplyTo == nil {
+		return false
+	}
+	replyID := replyMsgID(m)
+	if replyID == 0 {
+		return false
+	}
+	chatID := m.ChatID()
+	msgs, err := Bot.GetMessages(chatID, &telegram.SearchOption{IDs: []int32{replyID}})
+	if err != nil || len(msgs) == 0 {
+		return false
+	}
+	me, err := Bot.GetMe()
+	if err != nil || me == nil {
+		return false
+	}
+	fromID := userIDOf(&msgs[0])
+	return fromID == me.ID
+}
+
+// chatbotShouldReply checks mention / reply-to-bot / trigger word.
 func chatbotShouldReply(m *telegram.NewMessage) bool {
 	text := strings.ToLower(strings.TrimSpace(m.Text()))
 
-	// 1. reply to bot message
-	if m.Message != nil && m.Message.ReplyTo != nil {
-		replyID := m.Message.ReplyTo.ReplyToMsgID
-		if replyID != 0 {
-			// fetch the replied-to message sender
-			msgs, err := Bot.GetMessages(m.ChatID(), &telegram.InputMessageID{ID: replyID})
-			if err == nil {
-				for _, msg := range msgs {
-					if mm, ok := msg.(*telegram.MessageObj); ok {
-						if from, ok2 := mm.FromID.(*telegram.PeerUser); ok2 {
-							me, _ := Bot.GetMe()
-							if me != nil && from.UserID == me.ID {
-								return true
-							}
-						}
-					}
-				}
-			}
-		}
+	// 1. reply to a bot message
+	if isReplyToBot(m) {
+		return true
 	}
 
-	// 2. @mention in text
+	// 2. @mention
 	if u := strings.ToLower(strings.TrimSpace(botUsername)); u != "" {
 		if strings.Contains(text, "@"+u) {
 			return true
@@ -117,7 +123,7 @@ func chatbotShouldReply(m *telegram.NewMessage) bool {
 	}
 
 	// 3. bot display name in text
-	if n := strings.ToLower(strings.TrimSpace(BotName)); n != "" && len(n) > 2 {
+	if n := strings.ToLower(strings.TrimSpace(BotName)); len(n) > 2 {
 		if strings.Contains(text, n) {
 			return true
 		}
@@ -133,8 +139,16 @@ func chatbotShouldReply(m *telegram.NewMessage) bool {
 	return false
 }
 
+// sendTyping sends a typing action using the correct gogram API.
 func sendTyping(chatID int64) {
-	_, _ = Bot.MessagesSetTyping(chatID, 0, &telegram.SendMessageTypingAction{})
+	peer, err := Bot.ResolvePeer(chatID)
+	if err != nil || peer == nil {
+		return
+	}
+	_, _ = Bot.MessagesSetTyping(&telegram.MessagesSetTypingParams{
+		Peer:   peer,
+		Action: &telegram.SendMessageTypingAction{},
+	})
 }
 
 func handleChatbotOn(m *telegram.NewMessage) error {
@@ -210,18 +224,17 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 		return nil
 	}
 
-	// group: only reply if bot was mentioned / replied-to / name triggered
 	isPrivate := m.IsPrivate()
 	if !isPrivate && !chatbotShouldReply(m) {
 		return nil
 	}
 
-	// capture everything needed before goroutine
+	// capture before goroutine
 	userID := userIDOf(m)
 	name := senderFullName(m)
 	authorized := isOwner(userID) || (!isPrivate && isAuthorized(m))
 
-	// typing action — show immediately, before ARU call
+	// typing — show immediately
 	sendTyping(chatID)
 
 	go func() {
@@ -234,14 +247,14 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 
 		prompt := fmt.Sprintf("[bot: %s | user: %s | role: %s] %s", BotName, name, role, text)
 
-		// keep sending typing every 4s while waiting for ARU
+		// keep sending typing every 4s while waiting for ARU response
 		stop := make(chan struct{})
 		go func() {
-			t := time.NewTicker(4 * time.Second)
-			defer t.Stop()
+			ticker := time.NewTicker(4 * time.Second)
+			defer ticker.Stop()
 			for {
 				select {
-				case <-t.C:
+				case <-ticker.C:
 					sendTyping(chatID)
 				case <-stop:
 					return
