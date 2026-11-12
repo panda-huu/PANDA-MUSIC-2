@@ -18,9 +18,15 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Install native build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential gcc g++ make binutils zlib1g-dev libssl-dev pkg-config
       - name: Resolve and verify module checksums
         run: go mod tidy
+      - name: Install ntgcalls native library
+        run: go run setup_ntgcalls.go
       - name: Build
-        run: go build ./...
+        run: CGO_ENABLED=1 go build ./...
       - name: Test
-        run: go test ./...
+        run: CGO_ENABLED=1 go test ./...
