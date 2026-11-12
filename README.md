@@ -30,6 +30,8 @@ Required `.env` values:
 - `BOT_TOKEN`
 - `STRING_SESSION`
 - `OWNER_ID`
+- `ARU_API_KEY` (required to use the chatbot; keep it private)
+- `ARU_API_URL` (optional; defaults to `https://aru-ai-production.up.railway.app`)
 
 TypeTube's public Singapore cluster is used by default without an API key. Some tracks may be region-restricted; the TypeTube client reports those download errors.
 
@@ -62,3 +64,15 @@ cd /root/GOMUSICV2
 git pull
 bash setup.sh
 ```
+
+
+## ARU-AI Chatbot
+
+Set `ARU_API_KEY` in the deployment environment. The key is sent only from the bot server to ARU-AI and is not exposed in Telegram messages.
+
+- `/chaton` — enable chatbot in the current private chat or group (group admins only).
+- `/chatoff` — disable chatbot in the current private chat or group (group admins only).
+- In private chat, the bot replies to normal text while enabled.
+- In groups, it replies only when its bot name or username is mentioned; group commands are ignored.
+- Each Telegram user gets a separate ARU-AI conversation within each chat.
+- Chatbot enablement is runtime-only and resets when the bot process restarts, matching the reference PANDA-MUSICV4 behaviour.
