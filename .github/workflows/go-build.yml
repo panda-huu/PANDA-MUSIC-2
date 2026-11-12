@@ -18,6 +18,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Resolve and verify module checksums
+        run: go mod tidy
       - name: Build
         run: go build ./...
       - name: Test
