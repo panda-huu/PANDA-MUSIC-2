@@ -69,6 +69,8 @@ func loadConfig() error {
 	Cooldown, _ = strconv.Atoi(envOr("COOLDOWN", "10"))
 	ARUAPIKey = strings.TrimSpace(os.Getenv("ARU_API_KEY"))
 	ARUAPIURL = strings.TrimRight(envOr("ARU_API_URL", "https://aru-ai-production.up.railway.app"), "/")
+	ARUAPIKey = strings.TrimSpace(os.Getenv("ARU_API_KEY"))
+	ARUAPIURL = strings.TrimRight(envOr("ARU_API_URL", "https://aru-ai-production.up.railway.app"), "/")
 	return nil
 }
 
