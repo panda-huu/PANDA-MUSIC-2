@@ -27,19 +27,17 @@ var (
 	MaxDurationSeconds int
 	QueueLimit         int
 	Cooldown           int
+	ARUAPIKey          string
+	ARUAPIURL          string
 )
 
 func loadLoggerID() int64 {
 	for _, k := range []string{"LOGGER_ID", "LOG_GROUP_ID"} {
 		v := strings.TrimSpace(os.Getenv(k))
 		v = strings.Trim(v, "\"'")
-		if v == "" {
-			continue
-		}
+		if v == "" { continue }
 		n, err := strconv.ParseInt(v, 10, 64)
-		if err == nil && n != 0 {
-			return n
-		}
+		if err == nil && n != 0 { return n }
 	}
 	return -1003861170542
 }
@@ -50,16 +48,12 @@ func loadConfig() error {
 	_ = godotenv.Load("/root/GOMUSICV2/.env")
 	var err error
 	APIID, err = strconv.Atoi(mustEnv("API_ID"))
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	APIHash = mustEnv("API_HASH")
 	BotToken = mustEnv("BOT_TOKEN")
 	StringSession = mustEnv("STRING_SESSION")
 	OwnerID, err = strconv.ParseInt(mustEnv("OWNER_ID"), 10, 64)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	OwnerUsername = strings.TrimPrefix(envOr("OWNER_USERNAME", "sxyrdhu"), "@")
 	BotName = envOr("BOT_NAME", "ѕρσтιfу")
 	BotLink = envOr("BOT_LINK", "https://t.me/sptfyX_bot")
@@ -73,21 +67,21 @@ func loadConfig() error {
 	MaxDurationSeconds, _ = strconv.Atoi(envOr("MAX_DURATION_SECONDS", "1800"))
 	QueueLimit, _ = strconv.Atoi(envOr("QUEUE_LIMIT", "20"))
 	Cooldown, _ = strconv.Atoi(envOr("COOLDOWN", "10"))
+	ARUAPIKey = strings.TrimSpace(os.Getenv("ARU_API_KEY"))
+	ARUAPIURL = strings.TrimRight(envOr("ARU_API_URL", "https://aru-ai-production.up.railway.app"), "/")
+	ARUAPIKey = strings.TrimSpace(os.Getenv("ARU_API_KEY"))
+	ARUAPIURL = strings.TrimRight(envOr("ARU_API_URL", "https://aru-ai-production.up.railway.app"), "/")
 	return nil
 }
 
 func mustEnv(k string) string {
 	v := os.Getenv(k)
-	if v == "" {
-		panic("missing required env: " + k)
-	}
+	if v == "" { panic("missing required env: " + k) }
 	return v
 }
 
 func envOr(k, def string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
+	if v := os.Getenv(k); v != "" { return v }
 	return def
 }
 
@@ -96,12 +90,8 @@ func splitCSV(s string) []string {
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
+		if p != "" { out = append(out, p) }
 	}
-	if len(out) == 0 {
-		return []string{"https://files.catbox.moe/hzaxeq.jpg"}
-	}
+	if len(out) == 0 { return []string{"https://files.catbox.moe/hzaxeq.jpg"} }
 	return out
 }
