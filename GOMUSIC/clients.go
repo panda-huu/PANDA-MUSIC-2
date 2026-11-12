@@ -227,15 +227,27 @@ func initClients() error {
 }
 
 func setBotCommands() {
-	cmds := []*telegram.BotCommand{
-		{Command: "start", Description: "start the bot"},
-		{Command: "help", Description: "get help menu"},
-		{Command: "play", Description: "play a song"},
-		{Command: "pause", Description: "pause playback"},
-		{Command: "resume", Description: "resume playback"},
-		{Command: "skip", Description: "skip song"},
-		{Command: "stop", Description: "stop and clear"},
-		{Command: "ping", Description: "bot stats"},
+	// Keep Telegram's command picker in sync with the handlers registered by
+	// dispatchCommand. The previous short list hid many working commands.
+	names := []struct{ command, description string }{
+		{"start", "open the start menu"}, {"help", "show command help"},
+		{"play", "play a song in the group voice chat"}, {"vplay", "play video in voice chat"},
+		{"playlist", "manage your personal playlist"}, {"pause", "pause playback"},
+		{"resume", "resume playback"}, {"skip", "skip the current song"},
+		{"stop", "stop playback"}, {"clear", "clear the queue"}, {"queue", "show the queue"},
+		{"ping", "check bot response time"}, {"id", "show user and chat IDs"},
+		{"stats", "show bot statistics"}, {"nothumb", "toggle player artwork"},
+		{"speed", "set playback speed"}, {"speedreset", "reset playback speed"},
+		{"bass", "set bass level"}, {"bassoff", "turn bass off"},
+		{"effecton", "enable audio effects"}, {"effectoff", "disable audio effects"},
+		{"effects", "show audio effect settings"}, {"seek", "seek forward"},
+		{"seekback", "seek backward"}, {"welcome", "show welcome settings"},
+		{"setwelcome", "set the group welcome message"}, {"resetwelcome", "reset welcome message"},
+		{"couple", "run the group couple game"},
+	}
+	cmds := make([]*telegram.BotCommand, 0, len(names))
+	for _, item := range names {
+		cmds = append(cmds, &telegram.BotCommand{Command: item.command, Description: item.description})
 	}
 	_, err := Bot.BotsSetBotCommands(&telegram.BotCommandScopeDefault{}, "", cmds)
 	if err != nil {

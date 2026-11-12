@@ -31,7 +31,14 @@ func handlePing(m *telegram.NewMessage) error {
 }
 
 func handleRepo(m *telegram.NewMessage) error {
-	return nil
+	if blocked(m) {
+		return nil
+	}
+	body := richHeading("source code", 3) +
+		richNote("GOMUSICV2 is maintained on GitHub.") +
+		\`\`\`<a href="https://github.com/nikhil390u8o/GOMUSICV2">Open repository</a>\`\`\`
+	_, err := sendHTML(Bot, m.ChatID(), body, nil)
+	return err
 }
 
 func handleID(m *telegram.NewMessage) error {
