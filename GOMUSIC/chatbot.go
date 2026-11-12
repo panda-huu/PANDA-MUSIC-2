@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,9 @@ import (
 var (
 	chatbotEnabled sync.Map
 	aruHTTPClient = &http.Client{Timeout: 15 * time.Second}
+	chatbotRequestMu sync.Mutex
+	chatbotRequestTimes = make(map[string]time.Time)
+	chatbotInFlight = make(chan struct{}, 8)
 )
 
 type aruChatResponse struct {
@@ -60,18 +64,55 @@ func chatbotShouldReply(m *telegram.NewMessage) bool {
 		return false
 	}
 	text := strings.TrimSpace(m.Text())
-	if chatbotIgnoredCommand(text) { return false }
-	if m.IsPrivate() { return true }
+	if chatbotIgnoredCommand(text) {
+		return false
+	}
+	if m.IsPrivate() {
+		return true
+	}
 
-	lower := strings.ToLower(text)
-	triggers := []string{"gomusic", "music bot"}
-	if botUsername != "" { triggers = append(triggers, "@"+strings.ToLower(botUsername), strings.ToLower(botUsername)) }
-	if BotName != "" { triggers = append(triggers, strings.ToLower(BotName)) }
-	for _, trigger := range triggers {
-		trigger = strings.TrimSpace(trigger)
-		if trigger != "" && strings.Contains(lower, trigger) { return true }
+	// Groups require an explicit @username mention or the configured bot name
+	// as a standalone phrase. Generic words such as "music bot" do not trigger.
+	if botUsername != "" {
+		pattern := `(?i)(^|[^a-z0-9_])@` + regexp.QuoteMeta(strings.TrimPrefix(botUsername, "@")) + `([^a-z0-9_]|$)`
+		if regexp.MustCompile(pattern).MatchString(text) {
+			return true
+		}
+	}
+	if strings.TrimSpace(BotName) != "" {
+		pattern := `(?i)(^|[^\pL\pN_])` + regexp.QuoteMeta(strings.TrimSpace(BotName)) + `([^\pL\pN_]|$)`
+		if regexp.MustCompile(pattern).MatchString(text) {
+			return true
+		}
 	}
 	return false
+}
+
+// Allow one request per user/chat every 3 seconds and cap total concurrent
+// upstream calls so bursts cannot exhaust the ARU-AI quota.
+func allowChatbotRequest(key string) bool {
+	now := time.Now()
+	chatbotRequestMu.Lock()
+	if last, ok := chatbotRequestTimes[key]; ok && now.Sub(last) < 3*time.Second {
+		chatbotRequestMu.Unlock()
+		return false
+	}
+	chatbotRequestTimes[key] = now
+	if len(chatbotRequestTimes) > 10000 {
+		for k, t := range chatbotRequestTimes {
+			if now.Sub(t) > time.Minute {
+				delete(chatbotRequestTimes, k)
+			}
+		}
+	}
+	chatbotRequestMu.Unlock()
+
+	select {
+	case chatbotInFlight <- struct{}{}:
+		return true
+	default:
+		return false
+	}
 }
 
 func chatbotPrompt(m *telegram.NewMessage) string {
@@ -90,6 +131,11 @@ func handleChatbotMessage(m *telegram.NewMessage) error {
 		_, _ = sendHTML(Bot, m.ChatID(), richNote("Chatbot is not configured yet. Ask the bot owner to set ARU_API_KEY."), nil)
 		return nil
 	}
+	requestKey := fmt.Sprintf("%d:%d", canonChatID(m.ChatID()), userIDOf(m))
+	if !allowChatbotRequest(requestKey) {
+		return nil
+	}
+	defer func() { <-chatbotInFlight }()
 	chatID := fmt.Sprintf("gomusic:%d:%d", canonChatID(m.ChatID()), userIDOf(m))
 	payload, err := json.Marshal(map[string]string{"chat_id": chatID, "text": chatbotPrompt(m)})
 	if err != nil { return err }
