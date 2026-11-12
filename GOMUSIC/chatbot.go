@@ -84,20 +84,57 @@ func askARU(chatID int64, text string) (string, error) {
 	return strings.TrimSpace(out.Reply), nil
 }
 
-func chatbotShouldReply(text string) bool {
-	lower := strings.ToLower(text)
-	if u := strings.ToLower(strings.TrimSpace(botUsername)); u != "" && strings.Contains(lower, "@"+u) {
-		return true
+// chatbotShouldReply checks if bot was mentioned, replied to, or name triggered.
+func chatbotShouldReply(m *telegram.NewMessage) bool {
+	text := strings.ToLower(strings.TrimSpace(m.Text()))
+
+	// 1. reply to bot message
+	if m.Message != nil && m.Message.ReplyTo != nil {
+		replyID := m.Message.ReplyTo.ReplyToMsgID
+		if replyID != 0 {
+			// fetch the replied-to message sender
+			msgs, err := Bot.GetMessages(m.ChatID(), &telegram.InputMessageID{ID: replyID})
+			if err == nil {
+				for _, msg := range msgs {
+					if mm, ok := msg.(*telegram.MessageObj); ok {
+						if from, ok2 := mm.FromID.(*telegram.PeerUser); ok2 {
+							me, _ := Bot.GetMe()
+							if me != nil && from.UserID == me.ID {
+								return true
+							}
+						}
+					}
+				}
+			}
+		}
 	}
-	if n := strings.ToLower(strings.TrimSpace(BotName)); n != "" && strings.Contains(lower, n) {
-		return true
-	}
-	for _, t := range chatbotTriggers {
-		if strings.Contains(lower, t) {
+
+	// 2. @mention in text
+	if u := strings.ToLower(strings.TrimSpace(botUsername)); u != "" {
+		if strings.Contains(text, "@"+u) {
 			return true
 		}
 	}
+
+	// 3. bot display name in text
+	if n := strings.ToLower(strings.TrimSpace(BotName)); n != "" && len(n) > 2 {
+		if strings.Contains(text, n) {
+			return true
+		}
+	}
+
+	// 4. hardcoded triggers
+	for _, t := range chatbotTriggers {
+		if strings.Contains(text, t) {
+			return true
+		}
+	}
+
 	return false
+}
+
+func sendTyping(chatID int64) {
+	_, _ = Bot.MessagesSetTyping(chatID, 0, &telegram.SendMessageTypingAction{})
 }
 
 func handleChatbotOn(m *telegram.NewMessage) error {
@@ -172,24 +209,49 @@ func handleChatbotListen(m *telegram.NewMessage) error {
 	if !chatbotIsOn(chatID) {
 		return nil
 	}
-	if !m.IsPrivate() && !chatbotShouldReply(text) {
+
+	// group: only reply if bot was mentioned / replied-to / name triggered
+	isPrivate := m.IsPrivate()
+	if !isPrivate && !chatbotShouldReply(m) {
 		return nil
 	}
 
+	// capture everything needed before goroutine
 	userID := userIDOf(m)
 	name := senderFullName(m)
-	isPrivate := m.IsPrivate()
+	authorized := isOwner(userID) || (!isPrivate && isAuthorized(m))
+
+	// typing action — show immediately, before ARU call
+	sendTyping(chatID)
 
 	go func() {
 		role := "user"
 		if isOwner(userID) {
 			role = "owner"
-		} else if !isPrivate && isAuthorized(m) {
+		} else if authorized {
 			role = "group admin"
 		}
 
 		prompt := fmt.Sprintf("[bot: %s | user: %s | role: %s] %s", BotName, name, role, text)
+
+		// keep sending typing every 4s while waiting for ARU
+		stop := make(chan struct{})
+		go func() {
+			t := time.NewTicker(4 * time.Second)
+			defer t.Stop()
+			for {
+				select {
+				case <-t.C:
+					sendTyping(chatID)
+				case <-stop:
+					return
+				}
+			}
+		}()
+
 		reply, err := askARU(chatID, prompt)
+		close(stop)
+
 		if err != nil {
 			log.Println("[chatbot] ARU error:", err)
 			return
